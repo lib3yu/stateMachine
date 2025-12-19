@@ -4,6 +4,7 @@ dist:
 	mkdir -p bin/
 	gcc -std=c99 -I src src/stateMachine.c examples/stateMachineExample.c  -o bin/example
 	gcc -std=c99 -I src src/stateMachine.c examples/loginStateMachineExample.c  -o bin/login_example
+	gcc -std=c99 -Isrc -Iexamples src/stateMachine.c examples/queue.c examples/motorCtrlStateMachine.c  -o bin/motor_example
 
 test:
 	mkdir -p bin/
