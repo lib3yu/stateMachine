@@ -88,6 +88,18 @@
 
 #define _2str(X_) #X_
 
+typedef union {
+    int8_t   mode;                 /* Control mode (for SET_MODE) */
+    int16_t  targetTorque;         /* Target value (for SET_TARGET_TORQUE) */
+    int32_t  targetVelocity;       /* Target value (for SET_TARGET_VELOCITY) */
+    int32_t  targetPosition;       /* Target value (for SET_TARGET_POSITION) */
+    uint32_t acceleration;         /* Acceleration value (for SET_ACCELERATION) */
+    uint32_t maxVelocity;          /* Max velocity value (for SET_MAX_VELOCITY) */
+    uint32_t deceleration;         /* Quick stop deceleration (for SET_QUICK_STOP_DEC) */
+    uint32_t maxAcceleration;      /* Max acceleration (for SET_MAX_ACCELERATION) */
+    uint16_t typi[3];              /* [0]:type(1:TRQ;2:VEL;3:POS;); [1]:param_p;[2]:param_i; */
+} Motor_ParamData_t;
+
 /* motor command message types (User -> Motor) */
 typedef enum {
     MOTOR_CMD_NONE = 0,                /* No command pending */
@@ -110,17 +122,7 @@ typedef enum {
 /* motor command message */
 typedef struct {
     Motor_CmdType_t type;
-    union {
-        int8_t   mode;                 /* Control mode (for SET_MODE) */
-        int16_t  targetTorque;         /* Target value (for SET_TARGET_TORQUE) */
-        int32_t  targetVelocity;       /* Target value (for SET_TARGET_VELOCITY) */
-        int32_t  targetPosition;       /* Target value (for SET_TARGET_POSITION) */
-        uint32_t acceleration;         /* Acceleration value (for SET_ACCELERATION) */
-        uint32_t maxVelocity;          /* Max velocity value (for SET_MAX_VELOCITY) */
-        uint32_t deceleration;         /* Quick stop deceleration (for SET_QUICK_STOP_DEC) */
-        uint32_t maxAcceleration;      /* Max acceleration (for SET_MAX_ACCELERATION) */
-        uint16_t typi[3];              /* [0]:type(1:TRQ;2:VEL;3:POS;); [1]:param_p;[2]:param_i; */
-    } data;
+    Motor_ParamData_t data;
 } Motor_Cmd_t;
 
 /* motor event type */
@@ -130,19 +132,29 @@ typedef enum {
     /* from user command */
     MOTOR_EV_START_REQUESTED,          /* start */
     MOTOR_EV_STOP_REQUESTED,           /* normal stop */
-    MOTOR_EV_PARAM_CHANGE_REQUESTED,   /* accel/max_accel/max_vel/pid */
-    MOTOR_EV_MODE_CHANGE_REQUESTED,      /* cst/csv/csp/pvm/ppm */
-    MOTOR_EV_TORQUE_CHANGE_REQUESTED,    /* torque value */
-    MOTOR_EV_VELOCITY_CHANGE_REQUESTED,  /* velocity value */
-    MOTOR_EV_POSITION_CHANGE_REQUESTED,  /* position value */
-    MOTOR_EV_FAULT_RESET_REQUESTED,
-    MOTOR_EV_ACCELERATION_CHANGE_REQUESTED,
-    MOTOR_EV_MAX_VELOCITY_CHANGE_REQUESTED,
-    MOTOR_EV_MAX_ACCELERATION_CHANGE_REQUESTED,
-    MOTOR_EV_PID_PARAM_CHANGE_REQUESTED,
-    /* from internal events */
+    MOTOR_EV_FAULT_RESET_REQUESTED,    /* reset fault */
+    MOTOR_EV_PARAM_UPDATE_REQUESTED,   /* all parameter update */
     // add more ...
 } Motor_Event_t;
+
+/* motor parameter type */
+typedef enum {
+    MOTOR_PARAM_MODE,
+    MOTOR_PARAM_TARGET_TORQUE,
+    MOTOR_PARAM_TARGET_VELOCITY,
+    MOTOR_PARAM_TARGET_POSITION,
+    MOTOR_PARAM_ACCELERATION,
+    MOTOR_PARAM_MAX_VELOCITY,
+    MOTOR_PARAM_MAX_ACCELERATION,
+    MOTOR_PARAM_PIDs,
+} Motor_ParamType_t;
+
+/* motor parameter value */
+typedef struct {
+    Motor_ParamType_t type;
+    Motor_ParamData_t val;
+} Motor_Param_t;
+
 
 /** state layer (first layer) */
 typedef enum {
@@ -172,6 +184,11 @@ typedef struct {
     int exit_app;
     int fault_active;
     int aligned;
+
+    Motor_MotionMode_t lastMotion;
+    struct state *lastMotionState;
+    Motor_MotionMode_t pendingMotion;
+    struct state *pendingMotionState;
 } Context_t;
 
 /* ========================================================================= */
@@ -190,6 +207,10 @@ static Context_t ctx = {
     .exit_app = 0,
     .fault_active = 0,
     .aligned = 0,
+    .lastMotion = MOTOR_MOTION_VELOCITY_PROFILE,
+    .lastMotionState = NULL,
+    .pendingMotion = MOTOR_MOTION_VELOCITY_PROFILE,
+    .pendingMotionState = NULL
 };
 
 // Guard Functions
@@ -210,19 +231,19 @@ static void A_EnterStopping(void *stateData, struct event *e);
 static void A_EnterFault(void *stateData, struct event *e);
 static void A_ProcessAlign(void *currentStateData, struct event *event, void *newStateData );
 static void A_ProcessStopping(void *currentStateData, struct event *event, void *newStateData );
-
+static void A_UpdateParams(void *currentStateData, struct event *event, void *newStateData );
 
 // State-specific Cycle Actions (Layer 2)
-static void  A_EnterCyclicTorque(void *currentStateData, struct event *event, void *newStateData );
-static void  A_CycleCyclicTorque(void *currentStateData, struct event *event, void *newStateData );
-static void  A_EnterCyclicVelocity(void *currentStateData, struct event *event, void *newStateData );
-static void  A_CycleCyclicVelocity(void *currentStateData, struct event *event, void *newStateData );
-static void  A_EnterCyclicPosition(void *currentStateData, struct event *event, void *newStateData );
-static void  A_CycleCyclicPosition(void *currentStateData, struct event *event, void *newStateData );
-static void  A_EnterProfileVelocity(void *currentStateData, struct event *event, void *newStateData );
-static void  A_CycleProfileVelocity(void *currentStateData, struct event *event, void *newStateData );
-static void  A_EnterProfilePosition(void *currentStateData, struct event *event, void *newStateData );
-static void  A_CycleProfilePosition(void *currentStateData, struct event *event, void *newStateData );
+static void A_EnterCyclicTorque( void *stateData, struct event *event );
+static void A_EnterCyclicVelocity( void *stateData, struct event *event );
+static void A_EnterCyclicPosition( void *stateData, struct event *event );
+static void A_EnterProfileVelocity( void *stateData, struct event *event );
+static void A_EnterProfilePosition( void *stateData, struct event *event );
+static void A_CycleCyclicTorque(void *currentStateData, struct event *event, void *newStateData );
+static void A_CycleCyclicVelocity(void *currentStateData, struct event *event, void *newStateData );
+static void A_CycleCyclicPosition(void *currentStateData, struct event *event, void *newStateData );
+static void A_CycleProfileVelocity(void *currentStateData, struct event *event, void *newStateData );
+static void A_CycleProfilePosition(void *currentStateData, struct event *event, void *newStateData );
 
 // forward declaration
 static struct state stateLayer[MAX_MOTOR_STATE_NUM];
@@ -234,7 +255,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 // state layer (first layer) 
 static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
 {
-        /**
+    /**
      * MOTOR_STATE_POWER_UP 上电状态
      * 该状态不接收任何命令
      * 检查硬件组件是否连接，检查电源状态(G_PowerGood)
@@ -304,8 +325,6 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      * 作为所有运动模式的父状态，处理通用的停止和故障事件
      * - 发生故障 -> 跳转至 MOTOR_STATE_FAULTING
      * - 收到停止命令 -> 跳转至 MOTOR_STATE_STOPPING
-     * - 收到模式切换命令 -> 即时执行模式切换动作(A_SetMode)
-
      * - 周期性循环 -> 执行通用的周期任务(A_RunCycle)
      */
     [MOTOR_STATE_RUNNING] =  {
@@ -316,6 +335,12 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryState = &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE],
         .entryAction = A_EnterRunning,
         .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
+            { MOTOR_EV_STOP_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] },
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }, 
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }, 
+        },
         .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RUNNING),
 
     },
@@ -355,6 +380,11 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryState = NULL,
         .entryAction = A_EnterStopped,
         .exitAction = NULL,
+        .transitions = (struct transition[]){
+            {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
+            {MOTOR_EV_START_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING]},
+            {MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
+        },
         .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_STOPPED),
     },
     /**
@@ -483,7 +513,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfilePosition, &motionLayer[MOTOR_MOTION_POSITION_PROFILE] }
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RESETTING),
+        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_POSITION_PROFILE),
     },
 };
 
@@ -500,10 +530,18 @@ void *motor_thread(void *arg)
                 &stateLayer[MOTOR_STATE_FAULTING]);
     
     printf("Motor Thread Started.\n");
-    
+
+#define EMIT_PARAM(_type, _val)                         \
+        do {                                            \
+            param.type = _type; param.val = _val;       \
+            ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;  \
+            ev.data = &param;                           \
+        } while(0)
+
     while (!ctx.exit_app) 
     {
         Motor_Cmd_t cmd;
+        Motor_Param_t param;
         struct event ev;
 
         if (dequeue(&cmdQueue, &cmd, 10) == 0) {
@@ -518,14 +556,38 @@ void *motor_thread(void *arg)
                 case MOTOR_CMD_RST_FAULT: 
                     ev.type = MOTOR_EV_FAULT_RESET_REQUESTED; 
                     break;
+                case MOTOR_CMD_SET_MODE: 
+                    EMIT_PARAM(MOTOR_PARAM_MODE, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_TARGET_TORQUE:
+                    EMIT_PARAM(MOTOR_PARAM_TARGET_TORQUE, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_TARGET_VELOCITY:
+                    EMIT_PARAM(MOTOR_PARAM_TARGET_VELOCITY, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_TARGET_POSITION:
+                    EMIT_PARAM(MOTOR_PARAM_TARGET_POSITION, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_ACCELERATION:
+                    EMIT_PARAM(MOTOR_PARAM_ACCELERATION, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_MAX_VELOCITY:
+                    EMIT_PARAM(MOTOR_PARAM_MAX_VELOCITY, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_MAX_ACCELERATION:
+                    EMIT_PARAM(MOTOR_PARAM_MAX_ACCELERATION, cmd.data);
+                    break;
+                case MOTOR_CMD_SET_PID_PARAM:
+                    EMIT_PARAM(MOTOR_PARAM_PIDs, cmd.data);
+                    break;
                 default: 
                     ev.type = MOTOR_EV_NONE; 
                     break;
             }
         } 
+
         // Timeout -> Cycle
         if (ev.type == MOTOR_EV_NONE) ev.type = MOTOR_EV_CYCLE;
-
         stateM_handleEvent(&fsm, &ev);
          
          // Visual feedback for running
