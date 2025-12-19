@@ -1,11 +1,13 @@
-default: clean dist run
+default: clean dist
 
 dist:
-	mkdir bin/
+	mkdir -p bin/
 	gcc -std=c99 -I src src/stateMachine.c examples/stateMachineExample.c  -o bin/example
-	
-run:
-	./bin/example
+	gcc -std=c99 -I src src/stateMachine.c examples/loginStateMachineExample.c  -o bin/login_example
+
+test:
+	mkdir -p bin/
+	gcc -std=c99 -I src src/stateMachine.c tests/nestedTest.c  -o bin/test
 	
 clean:
 	rm -rf bin
