@@ -171,6 +171,7 @@ typedef enum {
 typedef struct {
     int exit_app;
     int fault_active;
+    int aligned;
 } Context_t;
 
 /* ========================================================================= */
@@ -188,6 +189,7 @@ typedef struct {
 static Context_t ctx = {
     .exit_app = 0,
     .fault_active = 0,
+    .aligned = 0,
 };
 
 // Guard Functions
@@ -206,6 +208,9 @@ static void A_EnterStopped(void *stateData, struct event *e);
 static void A_EnterRunning(void *stateData, struct event *e);
 static void A_EnterStopping(void *stateData, struct event *e);
 static void A_EnterFault(void *stateData, struct event *e);
+static void A_ProcessAlign(void *currentStateData, struct event *event, void *newStateData );
+static void A_ProcessStopping(void *currentStateData, struct event *event, void *newStateData );
+
 
 // State-specific Cycle Actions (Layer 2)
 static void  A_EnterCyclicTorque(void *currentStateData, struct event *event, void *newStateData );
@@ -223,6 +228,9 @@ static void  A_CycleProfilePosition(void *currentStateData, struct event *event,
 static struct state stateLayer[MAX_MOTOR_STATE_NUM];
 static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 
+#define N_TRANSITIONS(layer_, item_) \
+    sizeof(layer_[item_].transitions) / sizeof(layer_[item_].transitions[0])
+
 // state layer (first layer) 
 static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
 {
@@ -239,11 +247,11 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             &ctx, _2str(MOTOR_STATE_POWER_UP)
         },
         .entryState = NULL,
-        .numTransitions = 2,
         .transitions = (struct transition[]){
             {MOTOR_EV_CYCLE, NULL, &G_PowerGood, NULL, &stateLayer[MOTOR_STATE_INIT]},
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_POWER_UP]}
         },
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_POWER_UP),
         .exitAction = NULL,
     },
     /**
@@ -261,6 +269,13 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryState = NULL,
         .entryAction = A_EnterInit,
         .exitAction = NULL,
+        .transitions = (struct transition[]){
+             { MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
+             { MOTOR_EV_CYCLE, NULL, &G_InitSuccess, NULL, &stateLayer[MOTOR_STATE_ALIGN] },
+             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT] }
+        },
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_INIT),
+        
     },
     /**
      * MOTOR_STATE_ALIGN 对齐状态
@@ -276,6 +291,13 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         },
         .entryState = NULL,
         .entryAction = A_EnterAlign,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+             { MOTOR_EV_CYCLE, NULL, G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
+             { MOTOR_EV_CYCLE, NULL, G_AlignSuccess, NULL, &stateLayer[MOTOR_STATE_STOPPED] },
+             { MOTOR_EV_CYCLE, NULL, NULL, A_ProcessAlign, &stateLayer[MOTOR_STATE_ALIGN] }
+        },
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_ALIGN),
     },
     /**
      * MOTOR_STATE_RUNNING 运行状态（父状态）
@@ -294,6 +316,8 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryState = &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE],
         .entryAction = A_EnterRunning,
         .exitAction = NULL,
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RUNNING),
+
     },
     /**
      * MOTOR_STATE_STOPPING 状态下不接收任何命令，
@@ -307,8 +331,14 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             &ctx, _2str(MOTOR_STATE_STOPPING)
         },
         .entryState = NULL,
-        .entryAction = NULL,
+        .entryAction = A_EnterStopping,
         .exitAction = NULL,
+        .transitions = (struct transition[]){
+            {MOTOR_EV_CYCLE, NULL, G_IsStopped, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
+            {MOTOR_EV_CYCLE, NULL, NULL, A_ProcessStopping, &stateLayer[MOTOR_STATE_STOPPING]},
+        },
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_STOPPING),
+        
     },
     /**
      * MOTOR_STATE_STOPPED 状态下
@@ -325,6 +355,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryState = NULL,
         .entryAction = A_EnterStopped,
         .exitAction = NULL,
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_STOPPED),
     },
     /**
      * MOTOR_STATE_FAULTING 状态下不执行任何动作，不接收任何命令，
@@ -338,6 +369,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         },
         .exitAction = NULL,
         .entryAction = NULL,
+        .transitions = (struct transition[]){
+            {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED]} 
+        },
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_FAULTING),
     },
     /**
      * MOTOR_STATE_FAULTED 状态下仅接收 MOTOR_EV_FAULT_RESET_REQUESTED 命令，
@@ -349,6 +384,13 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             &ctx, _2str(MOTOR_STATE_FAULTED)
         },
         .entryState = NULL,
+        .entryAction = NULL,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            {MOTOR_EV_FAULT_RESET_REQUESTED, &ctx, G_FaultReseted, NULL, &stateLayer[MOTOR_STATE_RESETTING]},
+            {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED]} 
+        },
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_FAULTED),
     },
     /**
      * MOTOR_STATE_RESETTING 状态下不执行任何动作，不接收任何命令，
@@ -360,12 +402,12 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             &ctx, _2str(MOTOR_STATE_RESETTING)
         },
         .entryState = NULL,
-        .numTransitions = 1,
+        .entryAction = NULL,
+        .exitAction = NULL,
         .transitions = (struct transition[]){
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT]}
         },
-        .entryAction = NULL,
-        .exitAction = NULL,
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RESETTING),
     },
 };
 
@@ -384,7 +426,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicTorque, &motionLayer[MOTOR_MOTION_TORQUE_CYCLIC] }
         },
-        .numTransitions = 1,
+        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_TORQUE_CYCLIC),
     },
     /**
      * MOTOR_MOTION_VELOCITY_CYCLIC 循环速度模式
@@ -399,7 +441,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicVelocity, &motionLayer[MOTOR_MOTION_VELOCITY_CYCLIC] }
         },
-        .numTransitions = 1,
+        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_VELOCITY_CYCLIC),
     },
     /**
      * MOTOR_MOTION_POSITION_CYCLIC 循环位置模式
@@ -413,7 +455,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicPosition, &motionLayer[MOTOR_MOTION_POSITION_CYCLIC] }
         },
-        .numTransitions = 1,
+        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_POSITION_CYCLIC),
     },
     /**
      * MOTOR_MOTION_VELOCITY_PROFILE 轮廓速度模式
@@ -427,7 +469,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfileVelocity, &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE] }
         },
-        .numTransitions = 1,
+        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_VELOCITY_PROFILE),
     },
     /**
      * MOTOR_MOTION_POSITION_PROFILE 轮廓位置模式
@@ -441,7 +483,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfilePosition, &motionLayer[MOTOR_MOTION_POSITION_PROFILE] }
         },
-        .numTransitions = 1,
+        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RESETTING),
     },
 };
 
