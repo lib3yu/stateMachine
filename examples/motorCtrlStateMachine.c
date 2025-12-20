@@ -264,36 +264,64 @@ static Context_t ctx = {
 };
 
 // Guard Functions
-static bool G_PowerGood(void *param, struct event *e);
-static bool G_InitSuccess(void *param, struct event *e);
-static bool G_AlignSuccess(void *param, struct event *e);
-static bool G_IsStopped(void *param, struct event *e);
+static bool G_PowerGood(void *param, struct event *e){ printf("[Guard] Power Good check passed.\n"); return true; }
+static bool G_InitSuccess(void *param, struct event *e){ printf("[Guard] Init Success check passed.\n"); return true; }
+static bool G_AlignSuccess(void *param, struct event *e){ printf("[Guard] Align Success check passed.\n"); return true; }
+static bool G_IsStopped(void *param, struct event *e){ printf("[Guard] Motor is Stopped!\n"); return true; }
 static bool G_FaultActive(void *param, struct event *e);
 static bool G_FaultReseted(void *param, struct event *e);
 
+static bool G_FaultActive(void *param, struct event *e) 
+{
+    if (ctx.fault_active) {
+        printf("[Guard] Fault is Active!\n");
+        return true;
+    }
+    return false;
+}
+
+static bool G_FaultReseted(void *param, struct event *e) 
+{
+    if (ctx.fault_active) {
+        printf("[Guard] Fault check is Active!\n");
+        return true;
+    }
+    printf("[Guard] Fault check is reseted!\n");
+    return false;
+}
+
 // Action Functions
-static void A_EnterPowerUp(void *stateData, struct event *e);
-static void A_EnterInit(void *stateData, struct event *e);
-static void A_EnterAlign(void *stateData, struct event *e);
-static void A_EnterStopped(void *stateData, struct event *e);
-static void A_EnterRunning(void *stateData, struct event *e);
-static void A_EnterStopping(void *stateData, struct event *e);
-static void A_EnterFault(void *stateData, struct event *e);
-static void A_ProcessAlign(void *currentStateData, struct event *event, void *newStateData );
-static void A_ProcessStopping(void *currentStateData, struct event *event, void *newStateData );
+static void A_EnterPowerUp(void *stateData, struct event *e){ printf(">> [State] Enter POWER_UP\n"); }
+static void A_EnterInit(void *stateData, struct event *e){ printf(">> [State] Enter INIT\n"); }
+static void A_EnterAlign(void *stateData, struct event *e){ printf(">> [State] Enter ALIGN\n"); }
+static void A_EnterStopped(void *stateData, struct event *e){ printf(">> [State] Enter STOPPED\n"); }
+static void A_EnterRunning(void *stateData, struct event *e){
+    Context_Self_t *self = (Context_Self_t *)stateData;
+    printf(">> [State] Enter RUNNING. Last motion: %d\n",
+           self->ctx->lastMotion);
+}
+static void A_EnterStopping(void *stateData, struct event *e){ printf(">> [State] Enter STOPPING\n"); }
+static void A_EnterFault(void *stateData, struct event *e){ printf(">> [State] Enter FAULTED!\n"); }
+static void A_ProcessAlign(void *currentStateData, struct event *event, void *newStateData ){}
+static void A_ProcessStopping(void *currentStateData, struct event *event, void *newStateData ){}
 static void A_UpdateParams(void *currentStateData, struct event *event, void *newStateData );
 
 // State-specific Cycle Actions (Layer 2)
-static void A_EnterCyclicTorque( void *stateData, struct event *event );
-static void A_EnterCyclicVelocity( void *stateData, struct event *event );
-static void A_EnterCyclicPosition( void *stateData, struct event *event );
-static void A_EnterProfileVelocity( void *stateData, struct event *event );
-static void A_EnterProfilePosition( void *stateData, struct event *event );
-static void A_CycleCyclicTorque(void *currentStateData, struct event *event, void *newStateData );
-static void A_CycleCyclicVelocity(void *currentStateData, struct event *event, void *newStateData );
-static void A_CycleCyclicPosition(void *currentStateData, struct event *event, void *newStateData );
-static void A_CycleProfileVelocity(void *currentStateData, struct event *event, void *newStateData );
-static void A_CycleProfilePosition(void *currentStateData, struct event *event, void *newStateData );
+static void A_EnterCyclicTorque( void *stateData, struct event *event ) { printf("[Motion] [Enter] cyclic torque\n"); }
+static void A_EnterCyclicVelocity( void *stateData, struct event *event ) { printf("[Motion] [Enter] cyclic velocity\n");}
+static void A_EnterCyclicPosition( void *stateData, struct event *event ) { printf("[Motion] [Enter] cyclic position\n"); }
+static void A_EnterProfileVelocity( void *stateData, struct event *event ) { printf("[Motion] [Enter] profile velocity\n"); }
+static void A_EnterProfilePosition( void *stateData, struct event *event ) { printf("[Motion] [Enter] profile position\n"); }
+static void A_CycleCyclicTorque(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] cyclic torque\n"); }
+static void A_CycleCyclicVelocity(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] cyclic velocity\n"); }
+static void A_CycleCyclicPosition(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] cyclic position\n"); }
+static void A_CycleProfileVelocity(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] profile velocity\n"); }
+static void A_CycleProfilePosition(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] profile position\n"); }
+static void A_ExitCyclicTorque( void *stateData, struct event *event ){ printf("[Motion] [Exit] cyclic torque\n"); }
+static void A_ExitCyclicVelocity( void *stateData, struct event *event ) { printf("[Motion] [Exit] cyclic velocity\n"); }
+static void A_ExitCyclicPosition( void *stateData, struct event *event ) { printf("[Motion] [Exit] cyclic position\n"); }
+static void A_ExitProfileVelocity( void *stateData, struct event *event ) { printf("[Motion] [Exit] profile velocity\n"); }
+static void A_ExitProfilePosition( void *stateData, struct event *event ) { printf("[Motion] [Exit] profile position\n"); }
 
 // forward declaration
 static struct state stateLayer[MAX_MOTOR_STATE_NUM];
@@ -501,8 +529,8 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .entryState = NULL,
         .data = _2str(MOTOR_MOTION_TORQUE_CYCLIC),
-        .entryAction = NULL,
-        .exitAction = NULL,
+        .entryAction = A_EnterCyclicTorque,
+        .exitAction = A_ExitCyclicTorque,
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicTorque, &motionLayer[MOTOR_MOTION_TORQUE_CYCLIC] }
         },
@@ -516,8 +544,8 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .entryState = NULL,
         .data = _2str(MOTOR_MOTION_VELOCITY_CYCLIC),
-        .entryAction = NULL,
-        .exitAction = NULL,
+        .entryAction = A_EnterCyclicVelocity,
+        .exitAction = A_ExitCyclicVelocity,
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicVelocity, &motionLayer[MOTOR_MOTION_VELOCITY_CYCLIC] }
         },
@@ -530,8 +558,8 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .entryState = NULL,
         .data = _2str(MOTOR_MOTION_POSITION_CYCLIC),
-        .entryAction = NULL,
-        .exitAction = NULL,
+        .entryAction = A_EnterCyclicPosition,
+        .exitAction = A_ExitCyclicPosition,
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicPosition, &motionLayer[MOTOR_MOTION_POSITION_CYCLIC] }
         },
@@ -544,8 +572,8 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .entryState = NULL,
         .data = _2str(MOTOR_MOTION_VELOCITY_PROFILE),
-        .entryAction = NULL,
-        .exitAction = NULL,
+        .entryAction = A_EnterProfileVelocity,
+        .exitAction = A_ExitProfileVelocity,
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfileVelocity, &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE] }
         },
@@ -558,8 +586,8 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .entryState = NULL,
         .data = _2str(MOTOR_MOTION_POSITION_PROFILE),
-        .entryAction = NULL,
-        .exitAction = NULL,
+        .entryAction = A_EnterProfilePosition,
+        .exitAction = A_ExitProfilePosition,
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfilePosition, &motionLayer[MOTOR_MOTION_POSITION_PROFILE] }
         },
@@ -572,55 +600,11 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
 // ============================================================================
 // Guards
 // ============================================================================
-static bool G_PowerGood(void *param, struct event *e) 
-{
-    printf("[Guard] Power Good check passed.\n");
-    return true;
-}
-
-static bool G_InitSuccess(void *param, struct event *e) 
-{
-    printf("[Guard] Init Success check passed.\n");
-    return true;
-}
-
-static bool G_AlignSuccess(void *param, struct event *e) 
-{
-    printf("[Guard] Align Success check passed.\n");
-    return true;
-}
-
-static bool G_IsStopped(void *param, struct event *e) {
-    printf("[Guard] Motor is Stopped!\n");
-    return true;
-}
-
-static bool G_FaultActive(void *param, struct event *e) 
-{
-    if (ctx.fault_active) {
-        printf("[Guard] Fault is Active!\n");
-        return true;
-    }
-    return false;
-}
-
-static bool G_FaultReseted(void *param, struct event *e) 
-{
-    printf("[Guard] Check fault reset.\n");
-    if (ctx.fault_active) {
-        printf("[Guard] Fault check is Active!\n");
-    return true;
-}
-    printf("[Guard] Fault check is reseted!\n");
-    return false;
-}
 
 // ============================================================================
 // Actions
 // ============================================================================
-
-
-
+ 
 
 /* ---------------- Threads ---------------- */
 
@@ -646,8 +630,9 @@ void *motor_thread(void *arg)
         Motor_Cmd_t cmd;
         Motor_Param_t param;
         struct event ev;
+        ev.type = MOTOR_EV_NONE;
 
-        if (dequeue(&cmdQueue, &cmd, 10) == 0) {
+        if (dequeue(&cmdQueue, &cmd, 100) == 0) {
             // Got Command
             switch (cmd.type) {
                 case MOTOR_CMD_START: 
@@ -787,7 +772,6 @@ void *input_thread(void *arg)
                     continue; 
                 }
             }
-            
             if (cmd.type != MOTOR_CMD_NONE) {
                 enqueue(&cmdQueue, &cmd, 100);
             }
@@ -840,7 +824,7 @@ static void dispatch_command(Motor_CmdType_t type, Motor_ParamPayload_t data)
         if (enqueue(&cmdQueue, &cmd, 100) == 0)
             break;
 
-        usleep(10 * 1000);
+        sleep(1);
     }
 }
 
@@ -855,7 +839,7 @@ static void *auto_flow_thread(void *arg)
         const MotorAutoStep_t *step = &kAutoFlowScript[i];
 
         if (step->delay_ms)
-            usleep(step->delay_ms * 1000);
+            sleep(2);
 
         if (step->fault_flag >= 0)
         {
@@ -870,7 +854,7 @@ static void *auto_flow_thread(void *arg)
             dispatch_command(step->cmd, step->data);
     }
 
-    usleep(300 * 1000);
+    sleep(3);
     ctx.exit_app = 1;
     return NULL;
 }
@@ -898,7 +882,7 @@ static int run_manual_mode(void)
 
 static int run_auto_mode(void)
 {
-    reset_context();
+    // reset_context();
     newqueue(&cmdQueue, sizeof(Motor_Cmd_t), 10);
 
     pthread_t th_motor, th_auto;
