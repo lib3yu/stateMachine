@@ -1,5 +1,53 @@
 /* 
+Overview
+========
+This demo simulates a two-layer FSM for a servo drive. The **state layer** captures
+the power/align/run lifecycle, while the **motion layer** (child states of Running)
+tracks the active profile (cyclic torque/velocity/position or profile velocity/position).
+Two POSIX threads collaborate:
+  * `motor_thread` dequeues CLI commands, emits FSM events, and runs the state machine.
+  * `input_thread` parses text commands (start/stop/mode/set/fault/reset/exit) and pushes
+    `Motor_Cmd_t` messages into a bounded queue (`queue.c` helper).
 
+Key Behaviors
+-------------
+- Guards model asynchronous hardware conditions. Example: `G_PowerGood` keeps
+  the FSM parked in `POWER_UP` until power is deemed stable, while `G_FaultActive`
+  bubbles any state (except FAULT) into the `FAULTING/FAULTED` rail.
+- Actions reflect MCU-style handlers: entry hooks log transitions, `A_UpdateParams`
+  decodes SET commands, and motion-layer entry/cycle hooks mimic control-loop ticks.
+- Hierarchical states (`stateLayer` parents of `motionLayer`) show how a single
+  top-level FSM can host multiple orthogonal sub-modes with shared stop/fault logic.
+- CLI command patterns:
+    `start|stop|reset|fault <0/1>|mode <cst/csv/csp/pvm/ppm>|set trq|vel|pos|acc|max_vel|max_acc <value>`
+  Each command translates into a queued event or parameter update payload.
+- Fault handling demonstrates both latched (`FAULTED` -> exit required) and recoverable
+  flows (`FAULT_RESET_REQUESTED` -> `RESETTING` -> `INIT`).
+
+Lifecycle Narrative
+-------------------
+1. `POWER_UP` waits on `G_PowerGood` before flowing into `INIT`.
+2. `INIT` bootstraps hardware; success via `G_InitSuccess` goes to `ALIGN`, otherwise faults.
+3. `ALIGN` models BLDC alignment; `G_AlignSuccess` drops the machine into `STOPPED`.
+4. `STOPPED` is the idle staging area; it accepts configuration commands and transitions to `RUNNING` on `MOTOR_EV_START_REQUESTED`.
+5. `RUNNING` hosts the motion layer, handling `STOP`, `fault`, and parameter updates.
+6. `STOPPING` performs deceleration steps and returns to `STOPPED` once `G_IsStopped` succeeds.
+7. `FAULTING/FAULTED` isolate the controller until `MOTOR_EV_FAULT_RESET_REQUESTED` runs through `RESETTING` back to `INIT`.
+
+Motion Layer Narrative
+----------------------
+- Each motion mode (`CST`, `CSV`, `CSP`, `PVM`, `PPM`) is a child state of RUNNING. Entry hooks log the selected mode and prep PID gains.
+- Motion states only handle `MOTOR_EV_CYCLE`, allowing per-mode control loops (torque/velocity/position/profile) to run at the motor thread rate.
+- CLI `mode <keyword>` enqueues `MOTOR_CMD_SET_MODE`, which updates the pending motion state; RUNNING’s entry action chooses the requested child.
+- Parameter updates executed in STOPPED or RUNNING use `A_UpdateParams`, ensuring consistent PID/trajectory tuning irrespective of the current sub-mode.
+
+Auto Control Flow Demo
+----------------------
+- Launch the binary with `--auto` to replay a scripted control loop inspired by the Juejin article. The helper thread injects mode changes, parameter updates, fault toggles, and stop/start commands without manual CLI input.
+- Log lines prefixed with `[auto]` trace each scripted step and clearly show how guard functions bubble a fault into `FAULTING/FAULTED` before resetting back to normal operation.
+
+Mermaid Diagram
+---------------
 ```mermaid
  stateDiagram-v2
     [*] --> POWER_UP
@@ -32,6 +80,8 @@
     FAULT --> [*] : 故障状态(需重新上电)
 ```
 
+State & Motion Layers
+---------------------
  ┌────────────────────────────────────────────────────────────┐
  │                        STATE  LAYER                        │
  └────────────────────────────────────────────────────────────┘
@@ -98,7 +148,7 @@ typedef union {
     uint32_t deceleration;         /* Quick stop deceleration (for SET_QUICK_STOP_DEC) */
     uint32_t maxAcceleration;      /* Max acceleration (for SET_MAX_ACCELERATION) */
     uint16_t typi[3];              /* [0]:type(1:TRQ;2:VEL;3:POS;); [1]:param_p;[2]:param_i; */
-} Motor_ParamData_t;
+} Motor_ParamPayload_t;
 
 /* motor command message types (User -> Motor) */
 typedef enum {
@@ -122,7 +172,7 @@ typedef enum {
 /* motor command message */
 typedef struct {
     Motor_CmdType_t type;
-    Motor_ParamData_t data;
+    Motor_ParamPayload_t data;
 } Motor_Cmd_t;
 
 /* motor event type */
@@ -152,7 +202,7 @@ typedef enum {
 /* motor parameter value */
 typedef struct {
     Motor_ParamType_t type;
-    Motor_ParamData_t val;
+    Motor_ParamPayload_t val;
 } Motor_Param_t;
 
 
@@ -519,6 +569,59 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
 
 
 
+// ============================================================================
+// Guards
+// ============================================================================
+static bool G_PowerGood(void *param, struct event *e) 
+{
+    printf("[Guard] Power Good check passed.\n");
+    return true;
+}
+
+static bool G_InitSuccess(void *param, struct event *e) 
+{
+    printf("[Guard] Init Success check passed.\n");
+    return true;
+}
+
+static bool G_AlignSuccess(void *param, struct event *e) 
+{
+    printf("[Guard] Align Success check passed.\n");
+    return true;
+}
+
+static bool G_IsStopped(void *param, struct event *e) {
+    printf("[Guard] Motor is Stopped!\n");
+    return true;
+}
+
+static bool G_FaultActive(void *param, struct event *e) 
+{
+    if (ctx.fault_active) {
+        printf("[Guard] Fault is Active!\n");
+        return true;
+    }
+    return false;
+}
+
+static bool G_FaultReseted(void *param, struct event *e) 
+{
+    printf("[Guard] Check fault reset.\n");
+    if (ctx.fault_active) {
+        printf("[Guard] Fault check is Active!\n");
+    return true;
+}
+    printf("[Guard] Fault check is reseted!\n");
+    return false;
+}
+
+// ============================================================================
+// Actions
+// ============================================================================
+
+
+
+
 /* ---------------- Threads ---------------- */
 
 // Motor Control Thread
@@ -694,8 +797,90 @@ void *input_thread(void *arg)
     return NULL;
 }
 
-int main() 
+
+
+
+// Auto control flow support
+typedef struct {
+    Motor_CmdType_t cmd;
+    Motor_ParamPayload_t data;
+    uint32_t delay_ms;
+    const char *label;
+    int fault_flag;              /* -1 => no change, otherwise set ctx.fault_active */
+} MotorAutoStep_t;
+
+static const MotorAutoStep_t kAutoFlowScript[] = {
+    { .cmd = MOTOR_CMD_SET_MODE, .data = { .mode = MOTOR_MOTION_VELOCITY_PROFILE }, .delay_ms = 200, .label = "[auto] select velocity profile", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_SET_MAX_VELOCITY, .data = { .maxVelocity = 1800 }, .delay_ms = 200, .label = "[auto] limit max velocity to 1800 rpm", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_SET_ACCELERATION, .data = { .acceleration = 200 }, .delay_ms = 200, .label = "[auto] set acceleration to 200 rpm/s", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_START, .delay_ms = 400, .label = "[auto] start drive", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_SET_TARGET_VELOCITY, .data = { .targetVelocity = 1200 }, .delay_ms = 400, .label = "[auto] command 1200 rpm", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_STOP, .delay_ms = 600, .label = "[auto] request slow stop", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_START, .delay_ms = 400, .label = "[auto] restart after stop", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_SET_MODE, .data = { .mode = MOTOR_MOTION_POSITION_PROFILE }, .delay_ms = 300, .label = "[auto] switch to position profile", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_SET_TARGET_POSITION, .data = { .targetPosition = 500 }, .delay_ms = 300, .label = "[auto] target position = 500 ticks", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_NONE, .delay_ms = 200, .label = "[auto] inject external fault", .fault_flag = 1 },
+    { .cmd = MOTOR_CMD_STOP, .delay_ms = 200, .label = "[auto] user stop while faulted", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_RST_FAULT, .delay_ms = 300, .label = "[auto] clear fault latch", .fault_flag = 0 },
+    { .cmd = MOTOR_CMD_START, .delay_ms = 200, .label = "[auto] resume run after reset", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_SET_TARGET_POSITION, .data = { .targetPosition = -200 }, .delay_ms = 300, .label = "[auto] jog to -200 ticks", .fault_flag = -1 },
+    { .cmd = MOTOR_CMD_STOP, .delay_ms = 400, .label = "[auto] final stop", .fault_flag = -1 },
+};
+
+
+static void dispatch_command(Motor_CmdType_t type, Motor_ParamPayload_t data)
 {
+    Motor_Cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.type = type;
+    cmd.data = data;
+
+    while (!ctx.exit_app)
+    {
+        if (enqueue(&cmdQueue, &cmd, 100) == 0)
+            break;
+
+        usleep(10 * 1000);
+    }
+}
+
+static void *auto_flow_thread(void *arg)
+{
+    (void)arg;
+    const size_t total = sizeof(kAutoFlowScript) / sizeof(kAutoFlowScript[0]);
+    printf("[auto] Scripted control flow has %zu steps.\n", total);
+
+    for (size_t i = 0; i < total && !ctx.exit_app; ++i)
+    {
+        const MotorAutoStep_t *step = &kAutoFlowScript[i];
+
+        if (step->delay_ms)
+            usleep(step->delay_ms * 1000);
+
+        if (step->fault_flag >= 0)
+        {
+            ctx.fault_active = step->fault_flag;
+            printf("[auto] fault_active -> %d\n", step->fault_flag);
+        }
+
+        if (step->label)
+            puts(step->label);
+
+        if (step->cmd != MOTOR_CMD_NONE)
+            dispatch_command(step->cmd, step->data);
+    }
+
+    usleep(300 * 1000);
+    ctx.exit_app = 1;
+    return NULL;
+}
+
+
+
+
+static int run_manual_mode(void)
+{
+    // reset_context();
     newqueue(&cmdQueue, sizeof(Motor_Cmd_t), 10);
     
     pthread_t th_motor, th_input;
@@ -709,6 +894,31 @@ int main()
     
     delequeue(&cmdQueue);
     return 0;
+}
+
+static int run_auto_mode(void)
+{
+    reset_context();
+    newqueue(&cmdQueue, sizeof(Motor_Cmd_t), 10);
+
+    pthread_t th_motor, th_auto;
+    pthread_create(&th_motor, NULL, motor_thread, NULL);
+    pthread_create(&th_auto, NULL, auto_flow_thread, NULL);
+
+    pthread_join(th_auto, NULL);
+    pthread_join(th_motor, NULL);
+
+    delequeue(&cmdQueue);
+    puts("[auto] Script completed.");
+    return 0;
+}
+
+int main(int argc, char **argv) 
+{
+    if (argc > 1 && strcmp(argv[1], "--auto") == 0)
+        return run_auto_mode();
+
+    return run_manual_mode();
 }
 
 
