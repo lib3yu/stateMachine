@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
-  * File Name          : template.h
-  * Description        : Header for template
+  * File Name          : queue.h
+  * Description        : Header for queue
   ******************************************************************************
   * @attention
   *
@@ -36,6 +36,7 @@ typedef struct {
     int count;              // 当前消息数量
     int head;               // 弹出位置
     int tail;               // 写入位置
+    int shutting_down;      // 标记队列是否处于销毁状态
     
     pthread_mutex_t lock;
     pthread_cond_t not_full;
@@ -55,5 +56,4 @@ int dequeue(queue_t *q, void *out_data, int timeout);
 }
 #endif /* __cplusplus */
 
-#endif /* USERAPP_TEMPLATE_H */
-
+#endif /* QUEUE_H */
