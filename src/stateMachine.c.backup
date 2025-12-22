@@ -81,56 +81,23 @@ int stateM_handleEvent( struct stateMachine *fsm,
       /* If the new state is a parent state, enter its entry state (if it has
        * one). Step down through the whole family tree until a state without
        * an entry state is found: */
-      struct state *targetLeafState = nextState;
-      while ( targetLeafState->entryState )
-         targetLeafState = targetLeafState->entryState;
+      while ( nextState->entryState )
+         nextState = nextState->entryState;
 
-      /* Find common ancestor between current state and target leaf state */
-      struct state *currentPath[STATE_MAX_DEPTH], *targetPath[STATE_MAX_DEPTH];
-      int currentDepth = 0, targetDepth = 0;
-
-      /* Build current state path (leaf to root) */
-      struct state *s = fsm->currentState;
-      while (s && currentDepth < STATE_MAX_DEPTH) {
-         currentPath[currentDepth++] = s;
-         s = s->parentState;
-      }
-
-      /* Build target leaf state path (leaf to root) */
-      s = targetLeafState;
-      while (s && targetDepth < STATE_MAX_DEPTH) {
-         targetPath[targetDepth++] = s;
-         s = s->parentState;
-      }
-
-      /* Find common ancestor by comparing paths from root down */
-      struct state *commonAncestor = NULL;
-      int i = currentDepth - 1, j = targetDepth - 1;
-      while (i >= 0 && j >= 0 && currentPath[i] == targetPath[j]) {
-         commonAncestor = currentPath[i];
-         i--; j--;
-      }
-
-      /* Call exit actions from current state up to (but not including) common ancestor */
-      for (int k = 0; k <= i; k++) {
-         struct state *exitState = currentPath[k];
-         if (exitState->exitAction)
-            exitState->exitAction(exitState->data, event);
-      }
+      /* Run exit action only if the current state is left (only if it does
+       * not return to itself): */
+      if ( nextState != fsm->currentState && fsm->currentState->exitAction )
+         fsm->currentState->exitAction( fsm->currentState->data, event );
 
       /* Run transition action (if any): */
       if ( transition->action )
-         transition->action( fsm->currentState->data, event, targetLeafState->data );
+         transition->action( fsm->currentState->data, event, nextState->
+               data );
 
-      /* Call entry actions from common ancestor's child down to target leaf state */
-      for (int k = j; k >= 0; k--) {
-         struct state *entryState = targetPath[k];
-         if (entryState->entryAction)
-            entryState->entryAction(entryState->data, event);
-      }
-
-      /* Update current state to target leaf state */
-      nextState = targetLeafState;
+      /* Call the new state's entry action if it has any (only if state does
+       * not return to itself): */
+      if ( nextState != fsm->currentState && nextState->entryAction )
+         nextState->entryAction( nextState->data, event );
 
       fsm->previousState = fsm->currentState;
       fsm->currentState = nextState;

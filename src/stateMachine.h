@@ -71,6 +71,15 @@
 #include <stdbool.h>
 
 /**
+ * \brief Maximum depth of state hierarchy
+ *
+ * Defines the maximum number of states that can be traversed from leaf to root.
+ * This is used internally to allocate arrays for state path tracking.
+ * Most practical state machines have depth less than 4.
+ */
+#define STATE_MAX_DEPTH 4
+
+/**
  * \brief Event
  *
  * Events trigger transitions from a state to another. Event types are defined
