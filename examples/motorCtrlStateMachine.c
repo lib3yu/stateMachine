@@ -272,7 +272,6 @@ typedef struct {
     Motor_MotionMode_t lastMotion;
     struct state *lastMotionState;
     Motor_MotionMode_t pendingMotion;
-    struct state *pendingMotionState;
 } Context_t;
 
 /* Private variables ---------------------------------------------------------*/
@@ -282,11 +281,6 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 // Queue instance
 static queue_t cmdQueue;
 
-typedef struct {
-    Context_t *ctx;
-    const char *selfn;
-}Context_Self_t;
-
 // Motor context
 static Context_t ctx = {
     .exit_app = 0,
@@ -295,7 +289,6 @@ static Context_t ctx = {
     .lastMotion = MOTOR_MOTION_VELOCITY_PROFILE,
     .lastMotionState = NULL,
     .pendingMotion = MOTOR_MOTION_VELOCITY_PROFILE,
-    .pendingMotionState = NULL,
 };
 
 /* Private define 1 ----------------------------------------------------------*/
@@ -386,9 +379,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_POWER_UP] = {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_POWER_UP)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .transitions = (struct transition[]){
             {MOTOR_EV_CYCLE, NULL, G_PowerGood, NULL, &stateLayer[MOTOR_STATE_INIT]},
@@ -406,9 +397,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_INIT] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_INIT)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .entryAction = A_EnterInit,
         .exitAction = NULL,
@@ -429,9 +418,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_ALIGN] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_ALIGN)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .entryAction = A_EnterAlign,
         .exitAction = NULL,
@@ -451,9 +438,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_RUNNING] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_RUNNING)
-        },
+        .data = &ctx,
         .entryState = &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE],
         .entryAction = A_EnterRunning,
         .exitAction = A_ExitRunning,
@@ -475,9 +460,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_STOPPING] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_STOPPING)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .entryAction = A_EnterStopping,
         .exitAction = A_ExitStopping,
@@ -498,9 +481,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_STOPPED] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_STOPPED)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .entryAction = A_EnterStopped,
         .exitAction = NULL,
@@ -520,9 +501,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
     [MOTOR_STATE_FAULTING] =  {
         .parentState = NULL,
         .entryState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_FAULTING)
-        },
+        .data = &ctx,
         .entryAction = A_EnterFaulting,
         .exitAction = A_ExitFaulting,
         .transitions = (struct transition[]){
@@ -536,9 +515,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_FAULTED] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_FAULTED)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .entryAction = A_EnterFaulted,
         .exitAction = A_ExitFaulted,
@@ -554,9 +531,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
      */
     [MOTOR_STATE_RESETTING] =  {
         .parentState = NULL,
-        .data = &(Context_Self_t){ 
-            &ctx, _2str(MOTOR_STATE_RESETTING)
-        },
+        .data = &ctx,
         .entryState = NULL,
         .entryAction = A_EnterResetting,
         .exitAction = A_ExitResetting,
@@ -695,8 +670,7 @@ static bool G_CanChangeMode(void *param, struct event *e)
 
 static void A_EnterRunning(void *stateData, struct event *e)
 {
-    Context_Self_t *self = (Context_Self_t *)stateData;
-    Context_t *ctx_ptr = self->ctx;
+    Context_t *ctx_ptr = (Context_t *)stateData;
 
     Motor_MotionMode_t targetMotion = ctx_ptr->pendingMotion;
 
@@ -709,8 +683,7 @@ static void A_EnterRunning(void *stateData, struct event *e)
 
 static void A_ExitRunning(void *stateData, struct event *e)
 {
-    Context_Self_t *self = (Context_Self_t *)stateData;
-    Context_t *ctx_ptr = self->ctx;
+    Context_t *ctx_ptr = (Context_t *)stateData;
 
     printf("<< [State] 退出运行状态。当前运动模式: %s\n", _motion2str(ctx_ptr->lastMotion));
 
@@ -843,7 +816,7 @@ void *motor_thread(void *arg)
         if (ev.type == MOTOR_EV_NONE) ev.type = MOTOR_EV_CYCLE;
         stateM_handleEvent(&fsm, &ev);
         // int state_ret = stateM_handleEvent(&fsm, &ev);
-        // printf("[User] %d, %s \n", state_ret, ((Context_Self_t *)stateM_currentState(&fsm)->data)->selfn);
+        // printf("[User] %d, %s \n", state_ret, (Context_t *)stateM_currentState(&fsm)->data);
          
          // Visual feedback for running
         //  struct state *st = stateM_currentState(&fsm);
@@ -1031,7 +1004,6 @@ static void init_context(void)
 {
     // 设置默认的运动状态指针
     ctx.lastMotionState = &motionLayer[ctx.lastMotion];
-    ctx.pendingMotionState = &motionLayer[ctx.pendingMotion];
     // 初始化RUNNING状态的entryState指针
     stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[ctx.pendingMotion];
 }
