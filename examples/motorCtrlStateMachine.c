@@ -1,3 +1,23 @@
+/**
+  ******************************************************************************
+  * File Name          : template.c
+  * Description        : source for template
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) lib3yu(neon).
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+***/
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 /* 
 Overview
 ========
@@ -29,22 +49,31 @@ Lifecycle Narrative
 1. `POWER_UP` waits on `G_PowerGood` before flowing into `INIT`.
 2. `INIT` bootstraps hardware; success via `G_InitSuccess` goes to `ALIGN`, otherwise faults.
 3. `ALIGN` models BLDC alignment; `G_AlignSuccess` drops the machine into `STOPPED`.
-4. `STOPPED` is the idle staging area; it accepts configuration commands and transitions to `RUNNING` on `MOTOR_EV_START_REQUESTED`.
+4. `STOPPED` is the idle staging area; it accepts configuration commands and 
+    transitions to `RUNNING` on `MOTOR_EV_START_REQUESTED`.
 5. `RUNNING` hosts the motion layer, handling `STOP`, `fault`, and parameter updates.
 6. `STOPPING` performs deceleration steps and returns to `STOPPED` once `G_IsStopped` succeeds.
-7. `FAULTING/FAULTED` isolate the controller until `MOTOR_EV_FAULT_RESET_REQUESTED` runs through `RESETTING` back to `INIT`.
+7. `FAULTING/FAULTED` isolate the controller until `MOTOR_EV_FAULT_RESET_REQUESTED` runs 
+    through `RESETTING` back to `INIT`.
 
 Motion Layer Narrative
 ----------------------
-- Each motion mode (`CST`, `CSV`, `CSP`, `PVM`, `PPM`) is a child state of RUNNING. Entry hooks log the selected mode and prep PID gains.
-- Motion states only handle `MOTOR_EV_CYCLE`, allowing per-mode control loops (torque/velocity/position/profile) to run at the motor thread rate.
-- CLI `mode <keyword>` enqueues `MOTOR_CMD_SET_MODE`, which updates the pending motion state; RUNNING’s entry action chooses the requested child.
-- Parameter updates executed in STOPPED or RUNNING use `A_UpdateParams`, ensuring consistent PID/trajectory tuning irrespective of the current sub-mode.
+- Each motion mode (`CST`, `CSV`, `CSP`, `PVM`, `PPM`) is a child state of RUNNING. 
+  Entry hooks log the selected mode and prep PID gains.
+- Motion states only handle `MOTOR_EV_CYCLE`, allowing per-mode control 
+  loops (torque/velocity/position/profile) to run at the motor thread rate.
+- CLI `mode <keyword>` enqueues `MOTOR_CMD_SET_MODE`, which updates the pending motion state; 
+  RUNNING’s entry action chooses the requested child.
+- Parameter updates executed in STOPPED or RUNNING use `A_UpdateParams`, 
+  ensuring consistent PID/trajectory tuning irrespective of the current sub-mode.
 
 Auto Control Flow Demo
 ----------------------
-- Launch the binary with `--auto` to replay a scripted control loop inspired by the Juejin article. The helper thread injects mode changes, parameter updates, fault toggles, and stop/start commands without manual CLI input.
-- Log lines prefixed with `[auto]` trace each scripted step and clearly show how guard functions bubble a fault into `FAULTING/FAULTED` before resetting back to normal operation.
+- Launch the binary with `--auto` to replay a scripted control loop inspired by the Juejin article. 
+  The helper thread injects mode changes, parameter updates, fault toggles, 
+  and stop/start commands without manual CLI input.
+- Log lines prefixed with `[auto]` trace each scripted step and clearly show how guard 
+  functions bubble a fault into `FAULTING/FAULTED` before resetting back to normal operation.
 
 Mermaid Diagram
 ---------------
@@ -123,20 +152,25 @@ State & Motion Layers
 
 */
 
-
+/* Includes ------------------------------------------------------------------*/
+#include "queue.h"
+#include "stateMachine.h"
+/* Private includes ----------------------------------------------------------*/
 #include <stdio.h>
-#include <ctype.h>
 #include <stdint.h>
 #include <string.h>
+#include <stddef.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <errno.h>
 #include <limits.h>
-#include "stateMachine.h"
-#include "queue.h"
 
+/* Private define 0 ----------------------------------------------------------*/
 #define _2str(X_) #X_
+/* Private macro 0 -----------------------------------------------------------*/
+/* Private typedef -----------------------------------------------------------*/
 
 typedef union {
     int      mode;                 /* Control mode (for SET_MODE) */
@@ -199,21 +233,11 @@ typedef enum {
     MOTOR_PARAM_PIDs,
 } Motor_ParamType_t;
 
-#define _param2str(enum_)   \
-    (enum_ == MOTOR_PARAM_TARGET_TORQUE)  ? "目标力矩" :        \
-    (enum_ == MOTOR_PARAM_TARGET_VELOCITY)  ? "目标速度" :      \
-    (enum_ == MOTOR_PARAM_TARGET_POSITION) ? "目标位置" :       \
-    (enum_ == MOTOR_PARAM_ACCELERATION) ? "加速度" :            \
-    (enum_ == MOTOR_PARAM_MAX_VELOCITY) ? "最大速度" :          \
-    (enum_ == MOTOR_PARAM_MAX_ACCELERATION) ? "最大加速度" :    \
-    (enum_ == MOTOR_PARAM_PIDs) ? "PID参数" : "未知参数类型"
-
 /* motor parameter value */
 typedef struct {
     Motor_ParamType_t type;
     Motor_ParamPayload_t val;
 } Motor_Param_t;
-
 
 /** state layer (first layer) */
 typedef enum {
@@ -239,12 +263,6 @@ typedef enum {
     MAX_MOTOR_MOTION_NUM,
 } Motor_MotionMode_t;
 
-#define _motion2str(enum_) \
-    (enum_ == MOTOR_MOTION_TORQUE_CYCLIC)    ? "循环力矩模式" : \
-    (enum_ == MOTOR_MOTION_VELOCITY_CYCLIC)  ? "循环速度模式" : \
-    (enum_ == MOTOR_MOTION_POSITION_CYCLIC)  ? "循环位置模式" : \
-    (enum_ == MOTOR_MOTION_VELOCITY_PROFILE) ? "轮廓速度模式" : \
-    (enum_ == MOTOR_MOTION_POSITION_PROFILE) ? "轮廓位置模式" : "未知运动模式"
 
 typedef struct {
     int exit_app;
@@ -257,15 +275,10 @@ typedef struct {
     struct state *pendingMotionState;
 } Context_t;
 
-
+/* Private variables ---------------------------------------------------------*/
 // forward declaration
 static struct state stateLayer[MAX_MOTOR_STATE_NUM];
 static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
-
-
-/* ========================================================================= */
-/*                              IMPLEMENTATION                               */
-/* ========================================================================= */
 // Queue instance
 static queue_t cmdQueue;
 
@@ -285,13 +298,30 @@ static Context_t ctx = {
     .pendingMotionState = NULL,
 };
 
+/* Private define 1 ----------------------------------------------------------*/
+
+/* Private macro 1 -----------------------------------------------------------*/
+#define _param2str(enum_)   \
+    (enum_ == MOTOR_PARAM_TARGET_TORQUE)  ? "目标力矩" :        \
+    (enum_ == MOTOR_PARAM_TARGET_VELOCITY)  ? "目标速度" :      \
+    (enum_ == MOTOR_PARAM_TARGET_POSITION) ? "目标位置" :       \
+    (enum_ == MOTOR_PARAM_ACCELERATION) ? "加速度" :            \
+    (enum_ == MOTOR_PARAM_MAX_VELOCITY) ? "最大速度" :          \
+    (enum_ == MOTOR_PARAM_MAX_ACCELERATION) ? "最大加速度" :    \
+    (enum_ == MOTOR_PARAM_PIDs) ? "PID参数" : "未知参数类型"
+
+#define _motion2str(enum_) \
+    (enum_ == MOTOR_MOTION_TORQUE_CYCLIC)    ? "循环力矩模式" : \
+    (enum_ == MOTOR_MOTION_VELOCITY_CYCLIC)  ? "循环速度模式" : \
+    (enum_ == MOTOR_MOTION_POSITION_CYCLIC)  ? "循环位置模式" : \
+    (enum_ == MOTOR_MOTION_VELOCITY_PROFILE) ? "轮廓速度模式" : \
+    (enum_ == MOTOR_MOTION_POSITION_PROFILE) ? "轮廓位置模式" : "未知运动模式"
+
+/* Private function prototypes -----------------------------------------------*/
 
 // ============================================================================
 // Guards
 // ============================================================================
-
-
-// Guard Functions
 static bool G_PowerGood(void *param, struct event *e){ printf("[Guard] 电源良好检查通过。\n"); return true; }
 static bool G_InitSuccess(void *param, struct event *e){ printf("[Guard] 初始化成功检查通过。\n"); return true; }
 static bool G_AlignSuccess(void *param, struct event *e){ printf("[Guard] 对齐成功检查通过。\n"); return true; }
@@ -299,81 +329,15 @@ static bool G_IsStopped(void *param, struct event *e){ printf("[Guard] 电机已
 static bool G_FaultActive(void *param, struct event *e);
 static bool G_FaultReseted(void *param, struct event *e);
 static bool G_CanChangeMode(void *param, struct event *e);
-
-static bool G_FaultActive(void *param, struct event *e) 
-{
-    if (ctx.fault_active) {
-        printf("[Guard] 故障处于活动状态！\n");
-        return true;
-    }
-    return false;
-}
-
-static bool G_FaultReseted(void *param, struct event *e)
-{
-    if (ctx.fault_active) {
-        printf("[Guard] 故障检查处于活动状态！\n");
-        return false;
-    }
-    printf("[Guard] 故障检查已重置！\n");
-    return true;
-}
-
-static bool G_CanChangeMode(void *param, struct event *e)
-{
-    printf("[Guard] 检查模式切换条件...");
-
-    // 不允许切换：存在故障
-    if (ctx.fault_active) {
-        printf("不允许：存在故障\n");
-        return false;
-    }
-
-    // 获取新模式数据
-    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
-
-    // 不允许切换：目标模式与当前模式相同
-    if (newMode == ctx.lastMotion) {
-        printf("不允许：目标模式与当前模式相同\n");
-        return false;
-    }
-
-    return true;
-}
-
-
 // ============================================================================
 // Actions
 // ============================================================================
-
-
-// Action Functions
 static void A_EnterPowerUp(void *stateData, struct event *e){ printf(">> [State] 进入上电状态\n"); }
 static void A_EnterInit(void *stateData, struct event *e){ printf(">> [State] 进入初始化状态\n"); }
 static void A_EnterAlign(void *stateData, struct event *e){ printf(">> [State] 进入对齐状态\n"); }
 static void A_EnterStopped(void *stateData, struct event *e){ printf(">> [State] 进入停止状态\n"); }
-static void A_EnterRunning(void *stateData, struct event *e)
-{
-    Context_Self_t *self = (Context_Self_t *)stateData;
-    Context_t *ctx_ptr = self->ctx;
-
-    Motor_MotionMode_t targetMotion = ctx_ptr->pendingMotion;
-
-    printf(">> [State] 进入运行状态。目标运动模式: %s\n", _motion2str(targetMotion));
-
-    ctx_ptr->lastMotion = targetMotion;
-    ctx_ptr->lastMotionState = &motionLayer[targetMotion];
-    stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[targetMotion];
-}
-
-static void A_ExitRunning(void *stateData, struct event *e)
-{
-    Context_Self_t *self = (Context_Self_t *)stateData;
-    Context_t *ctx_ptr = self->ctx;
-
-    printf("<< [State] 退出运行状态。当前运动模式: %s\n", _motion2str(ctx_ptr->lastMotion));
-
-}
+static void A_EnterRunning(void *stateData, struct event *e);
+static void A_ExitRunning(void *stateData, struct event *e);
 
 static void A_EnterStopping(void *stateData, struct event *e){ printf(">> [State] 进入停止中状态\n"); }
 static void A_ExitStopping(void *stateData, struct event *e){ printf("<< [State] 退出停止中状态\n"); }
@@ -388,57 +352,6 @@ static void A_ProcessStopping(void *currentStateData, struct event *event, void 
 static void A_UpdateParams(void *currentStateData, struct event *event, void *newStateData );
 static void A_ExitRunning(void *stateData, struct event *e);
 static void A_PrepareModeChange(void *currentStateData, struct event *event, void *newStateData );
-
-
-static void A_PrepareModeChange(void *currentStateData, struct event *e, void *newStateData)
-{
-    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
-
-    printf("[Action] 准备切换到 %s 模式\n", _motion2str(newMode));
-
-    ctx.lastMotion = newMode;
-    ctx.lastMotionState = &motionLayer[newMode];
-    ctx.pendingMotion = newMode;
-    stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[newMode];
-}
-
- 
-static void A_UpdateParams(void *currentStateData, struct event *e, void *newStateData)
-{
-    Motor_Param_t *param = (Motor_Param_t *)e->data;
-    if (!param) return;
-
-    printf("[Action] 参数更新: 类型=%s", _param2str(param->type));
-
-    switch (param->type) {
-        case MOTOR_PARAM_TARGET_TORQUE:
-            printf("  目标力矩 -> %d\n", param->val.targetTorque);
-            break;
-        case MOTOR_PARAM_TARGET_VELOCITY:
-            printf("  目标速度 -> %d\n", param->val.targetVelocity);
-            break;
-        case MOTOR_PARAM_TARGET_POSITION:
-            printf("  目标位置 -> %d\n", param->val.targetPosition);
-            break;
-        case MOTOR_PARAM_ACCELERATION:
-            printf("  加速度 -> %u\n", param->val.acceleration);
-            break;
-        case MOTOR_PARAM_MAX_VELOCITY:
-            printf("  最大速度 -> %u\n", param->val.maxVelocity);
-            break;
-        case MOTOR_PARAM_MAX_ACCELERATION:
-            printf("  最大加速度 -> %u\n", param->val.maxAcceleration);
-            break;
-        case MOTOR_PARAM_PIDs:
-            printf("  PID -> 类型:%u P:%u I:%u\n",
-                   param->val.typi[0], param->val.typi[1], param->val.typi[2]);
-            break;
-        default:
-            printf("  未知参数\n");
-            break;
-    }
-}
-
 
 // State-specific Cycle Actions (Layer 2)
 static void A_EnterCyclicTorque( void *stateData, struct event *event ) { printf("[Motion] [Enter] 循环力矩模式\n"); }
@@ -456,6 +369,10 @@ static void A_ExitCyclicVelocity( void *stateData, struct event *event ) { print
 static void A_ExitCyclicPosition( void *stateData, struct event *event ) { printf("[Motion] [Exit] 循环位置模式\n"); }
 static void A_ExitProfileVelocity( void *stateData, struct event *event ) { printf("[Motion] [Exit] 轮廓速度模式\n"); }
 static void A_ExitProfilePosition( void *stateData, struct event *event ) { printf("[Motion] [Exit] 轮廓位置模式\n"); }
+
+/* Private variables ---------------------------------------------------------*/
+
+
 
 // state layer (first layer) 
 static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
@@ -732,6 +649,126 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
 };
 
 
+/* Private define 2 ----------------------------------------------------------*/
+/* Private macro 2 -----------------------------------------------------------*/
+/* Private function code -----------------------------------------------------*/
+static bool G_FaultActive(void *param, struct event *e) 
+{
+    if (ctx.fault_active) {
+        printf("[Guard] 故障处于活动状态！\n");
+        return true;
+    }
+    return false;
+}
+
+static bool G_FaultReseted(void *param, struct event *e)
+{
+    if (ctx.fault_active) {
+        printf("[Guard] 故障检查处于活动状态！\n");
+        return false;
+    }
+    printf("[Guard] 故障检查已重置！\n");
+    return true;
+}
+
+static bool G_CanChangeMode(void *param, struct event *e)
+{
+    printf("[Guard] 检查模式切换条件...");
+
+    // 不允许切换：存在故障
+    if (ctx.fault_active) {
+        printf("不允许：存在故障\n");
+        return false;
+    }
+
+    // 获取新模式数据
+    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
+
+    // 不允许切换：目标模式与当前模式相同
+    if (newMode == ctx.lastMotion) {
+        printf("不允许：目标模式与当前模式相同\n");
+        return false;
+    }
+
+    return true;
+}
+
+static void A_EnterRunning(void *stateData, struct event *e)
+{
+    Context_Self_t *self = (Context_Self_t *)stateData;
+    Context_t *ctx_ptr = self->ctx;
+
+    Motor_MotionMode_t targetMotion = ctx_ptr->pendingMotion;
+
+    printf(">> [State] 进入运行状态。目标运动模式: %s\n", _motion2str(targetMotion));
+
+    ctx_ptr->lastMotion = targetMotion;
+    ctx_ptr->lastMotionState = &motionLayer[targetMotion];
+    stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[targetMotion];
+}
+
+static void A_ExitRunning(void *stateData, struct event *e)
+{
+    Context_Self_t *self = (Context_Self_t *)stateData;
+    Context_t *ctx_ptr = self->ctx;
+
+    printf("<< [State] 退出运行状态。当前运动模式: %s\n", _motion2str(ctx_ptr->lastMotion));
+
+}
+
+static void A_PrepareModeChange(void *currentStateData, struct event *e, void *newStateData)
+{
+    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
+
+    printf("[Action] 准备切换到 %s 模式\n", _motion2str(newMode));
+
+    ctx.lastMotion = newMode;
+    ctx.lastMotionState = &motionLayer[newMode];
+    ctx.pendingMotion = newMode;
+    stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[newMode];
+}
+
+static void A_UpdateParams(void *currentStateData, struct event *e, void *newStateData)
+{
+    Motor_Param_t *param = (Motor_Param_t *)e->data;
+    if (!param) return;
+
+    printf("[Action] 参数更新: 类型=%s", _param2str(param->type));
+
+    switch (param->type) {
+        case MOTOR_PARAM_TARGET_TORQUE:
+            printf("  目标力矩 -> %d\n", param->val.targetTorque);
+            break;
+        case MOTOR_PARAM_TARGET_VELOCITY:
+            printf("  目标速度 -> %d\n", param->val.targetVelocity);
+            break;
+        case MOTOR_PARAM_TARGET_POSITION:
+            printf("  目标位置 -> %d\n", param->val.targetPosition);
+            break;
+        case MOTOR_PARAM_ACCELERATION:
+            printf("  加速度 -> %u\n", param->val.acceleration);
+            break;
+        case MOTOR_PARAM_MAX_VELOCITY:
+            printf("  最大速度 -> %u\n", param->val.maxVelocity);
+            break;
+        case MOTOR_PARAM_MAX_ACCELERATION:
+            printf("  最大加速度 -> %u\n", param->val.maxAcceleration);
+            break;
+        case MOTOR_PARAM_PIDs:
+            printf("  PID -> 类型:%u P:%u I:%u\n",
+                   param->val.typi[0], param->val.typi[1], param->val.typi[2]);
+            break;
+        default:
+            printf("  未知参数\n");
+            break;
+    }
+}
+
+
+
+/* Public application code ---------------------------------------------------*/
+
+
 /* ---------------- Threads ---------------- */
 
 // Motor Control Thread
@@ -913,8 +950,6 @@ void *input_thread(void *arg)
 }
 
 
-
-
 // Auto control flow support
 typedef struct {
     Motor_CmdType_t cmd;
@@ -1001,7 +1036,10 @@ static void init_context(void)
     stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[ctx.pendingMotion];
 }
 
-int main(int argc, char **argv)
+
+/* Entry point ---------------------------------------------------------------*/
+
+int main(int argc, char const *argv[])
 {
     int run_man = 0;
     if (argc > 1 && strcmp(argv[1], "--man") == 0)
@@ -1014,8 +1052,10 @@ int main(int argc, char **argv)
     init_context();
 
     pthread_t th_motor, th_ctrl;
-    pthread_create(&th_motor, NULL, motor_thread, NULL);
-    pthread_create(&th_ctrl, NULL, ctrl_thread, NULL);
+    pthread_create(&th_motor, NULL, 
+                    motor_thread, NULL);
+    pthread_create(&th_ctrl, NULL, 
+                    ctrl_thread, NULL);
 
     pthread_join(th_ctrl, NULL);
     pthread_join(th_motor, NULL);
@@ -1027,4 +1067,7 @@ int main(int argc, char **argv)
 }
 
 
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
