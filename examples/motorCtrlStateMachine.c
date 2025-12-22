@@ -283,8 +283,12 @@ static Context_t ctx = {
     .lastMotion = MOTOR_MOTION_VELOCITY_PROFILE,
     .lastMotionState = NULL,
     .pendingMotion = MOTOR_MOTION_VELOCITY_PROFILE,
-    .pendingMotionState = NULL
-};
+
+
+// ============================================================================
+// Guards
+// ============================================================================
+
 
 // Guard Functions
 static bool G_PowerGood(void *param, struct event *e){ printf("[Guard] 电源良好检查通过。\n"); return true; }
@@ -313,6 +317,12 @@ static bool G_FaultReseted(void *param, struct event *e)
     return true;
 }
 
+
+// ============================================================================
+// Actions
+// ============================================================================
+
+
 // Action Functions
 static void A_EnterPowerUp(void *stateData, struct event *e){ printf(">> [State] 进入上电状态\n"); }
 static void A_EnterInit(void *stateData, struct event *e){ printf(">> [State] 进入初始化状态\n"); }
@@ -326,8 +336,8 @@ static void A_EnterRunning(void *stateData, struct event *e)
     // 如果有pending motion，使用它；否则使用last motion
     Motor_MotionMode_t targetMotion = ctx_ptr->pendingMotion;
 
-    printf(">> [State] 进入运行状态。目标运动模式: %s (pending=%d, last=%d)\n",
-           _motion2str(targetMotion), ctx_ptr->pendingMotion, ctx_ptr->lastMotion);
+    printf(">> [State] 进入运行状态。目标运动模式: %s (pending=%s, last=%s)\n",
+           _motion2str(targetMotion), _motion2str(ctx_ptr->pendingMotion), _motion2str(ctx_ptr->lastMotion));
 
     // 更新lastMotion和lastMotionState
     ctx_ptr->lastMotion = targetMotion;
@@ -362,6 +372,55 @@ static void A_ProcessAlign(void *currentStateData, struct event *event, void *ne
 static void A_ProcessStopping(void *currentStateData, struct event *event, void *newStateData ){}
 static void A_UpdateParams(void *currentStateData, struct event *event, void *newStateData );
 static void A_ExitRunning(void *stateData, struct event *e);
+
+ 
+static void A_UpdateParams(void *currentStateData, struct event *e, void *newStateData)
+{
+    Motor_Param_t *param = (Motor_Param_t *)e->data;
+    if (!param) return;
+
+    printf("[Action] 参数更新: 类型=%s", _param2str(param->type));
+
+    switch (param->type) {
+        case MOTOR_PARAM_MODE:
+            printf("  运动模式 -> %s\n", _motion2str(param->val.mode));
+            // 用户指定新模式，标记lastMotion为过期
+            ctx.lastMotionExpired = true;
+            // 更新pendingMotion状态，并立即更新RUNNING状态的entryState
+            ctx.pendingMotion = param->val.mode;
+            // 直接更新RUNNING状态的entryState指针，这样下次进入时会使用新模式
+            stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[param->val.mode];
+            // 同时更新lastMotionState，保持上下文一致
+            ctx.lastMotionState = &motionLayer[param->val.mode];
+            break;
+        case MOTOR_PARAM_TARGET_TORQUE:
+            printf("  目标力矩 -> %d\n", param->val.targetTorque);
+            break;
+        case MOTOR_PARAM_TARGET_VELOCITY:
+            printf("  目标速度 -> %d\n", param->val.targetVelocity);
+            break;
+        case MOTOR_PARAM_TARGET_POSITION:
+            printf("  目标位置 -> %d\n", param->val.targetPosition);
+            break;
+        case MOTOR_PARAM_ACCELERATION:
+            printf("  加速度 -> %u\n", param->val.acceleration);
+            break;
+        case MOTOR_PARAM_MAX_VELOCITY:
+            printf("  最大速度 -> %u\n", param->val.maxVelocity);
+            break;
+        case MOTOR_PARAM_MAX_ACCELERATION:
+            printf("  最大加速度 -> %u\n", param->val.maxAcceleration);
+            break;
+        case MOTOR_PARAM_PIDs:
+            printf("  PID -> 类型:%u P:%u I:%u\n",
+                   param->val.typi[0], param->val.typi[1], param->val.typi[2]);
+            break;
+        default:
+            printf("  未知参数\n");
+            break;
+    }
+}
+
 
 // State-specific Cycle Actions (Layer 2)
 static void A_EnterCyclicTorque( void *stateData, struct event *event ) { printf("[Motion] [Enter] 循环力矩模式\n"); }
@@ -652,60 +711,6 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
     },
 };
 
-
-
-// ============================================================================
-// Guards
-// ============================================================================
-
-// ============================================================================
-// Actions
-// ============================================================================
- 
-static void A_UpdateParams(void *currentStateData, struct event *e, void *newStateData)
-{
-    Motor_Param_t *param = (Motor_Param_t *)e->data;
-    if (!param) return;
-
-    printf("[Action] 参数更新: 类型=%s", _param2str(param->type));
-
-    switch (param->type) {
-        case MOTOR_PARAM_MODE:
-            printf("  运动模式 -> %s\n", _motion2str(param->val.mode));
-            // 更新pendingMotion状态，并立即更新RUNNING状态的entryState
-            ctx.pendingMotion = param->val.mode;
-            // 直接更新RUNNING状态的entryState指针，这样下次进入时会使用新模式
-            stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[param->val.mode];
-            // 同时更新lastMotionState，保持上下文一致
-            ctx.lastMotionState = &motionLayer[param->val.mode];
-            break;
-        case MOTOR_PARAM_TARGET_TORQUE:
-            printf("  目标力矩 -> %d\n", param->val.targetTorque);
-            break;
-        case MOTOR_PARAM_TARGET_VELOCITY:
-            printf("  目标速度 -> %d\n", param->val.targetVelocity);
-            break;
-        case MOTOR_PARAM_TARGET_POSITION:
-            printf("  目标位置 -> %d\n", param->val.targetPosition);
-            break;
-        case MOTOR_PARAM_ACCELERATION:
-            printf("  加速度 -> %u\n", param->val.acceleration);
-            break;
-        case MOTOR_PARAM_MAX_VELOCITY:
-            printf("  最大速度 -> %u\n", param->val.maxVelocity);
-            break;
-        case MOTOR_PARAM_MAX_ACCELERATION:
-            printf("  最大加速度 -> %u\n", param->val.maxAcceleration);
-            break;
-        case MOTOR_PARAM_PIDs:
-            printf("  PID -> 类型:%u P:%u I:%u\n",
-                   param->val.typi[0], param->val.typi[1], param->val.typi[2]);
-            break;
-        default:
-            printf("  未知参数\n");
-            break;
-    }
-}
 
 /* ---------------- Threads ---------------- */
 
