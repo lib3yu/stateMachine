@@ -327,9 +327,6 @@ static void A_ExitProfilePosition( void *stateData, struct event *event ) { prin
 static struct state stateLayer[MAX_MOTOR_STATE_NUM];
 static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 
-#define N_TRANSITIONS(layer_, item_) \
-    sizeof(layer_[item_].transitions) / sizeof(layer_[item_].transitions[0])
-
 // state layer (first layer) 
 static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
 {
@@ -347,10 +344,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         },
         .entryState = NULL,
         .transitions = (struct transition[]){
-            {MOTOR_EV_CYCLE, NULL, &G_PowerGood, NULL, &stateLayer[MOTOR_STATE_INIT]},
+            {MOTOR_EV_CYCLE, NULL, G_PowerGood, NULL, &stateLayer[MOTOR_STATE_INIT]},
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_POWER_UP]}
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_POWER_UP),
+        .numTransitions = 2,
         .exitAction = NULL,
     },
     /**
@@ -373,7 +370,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
              { MOTOR_EV_CYCLE, NULL, &G_InitSuccess, NULL, &stateLayer[MOTOR_STATE_ALIGN] },
              { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT] }
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_INIT),
+        .numTransitions = 3,
         
     },
     /**
@@ -396,7 +393,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
              { MOTOR_EV_CYCLE, NULL, G_AlignSuccess, NULL, &stateLayer[MOTOR_STATE_STOPPED] },
              { MOTOR_EV_CYCLE, NULL, NULL, A_ProcessAlign, &stateLayer[MOTOR_STATE_ALIGN] }
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_ALIGN),
+        .numTransitions = 3,
     },
     /**
      * MOTOR_STATE_RUNNING 运行状态（父状态）
@@ -419,7 +416,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }, 
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }, 
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RUNNING),
+        .numTransitions = 4,
 
     },
     /**
@@ -440,7 +437,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             {MOTOR_EV_CYCLE, NULL, G_IsStopped, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
             {MOTOR_EV_CYCLE, NULL, NULL, A_ProcessStopping, &stateLayer[MOTOR_STATE_STOPPING]},
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_STOPPING),
+        .numTransitions = 2,
         
     },
     /**
@@ -463,7 +460,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             {MOTOR_EV_START_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING]},
             {MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_STOPPED),
+        .numTransitions = 3,
     },
     /**
      * MOTOR_STATE_FAULTING 状态下不执行任何动作，不接收任何命令，
@@ -480,7 +477,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .transitions = (struct transition[]){
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED]} 
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_FAULTING),
+        .numTransitions = 1,
     },
     /**
      * MOTOR_STATE_FAULTED 状态下仅接收 MOTOR_EV_FAULT_RESET_REQUESTED 命令，
@@ -498,7 +495,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             {MOTOR_EV_FAULT_RESET_REQUESTED, &ctx, G_FaultReseted, NULL, &stateLayer[MOTOR_STATE_RESETTING]},
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED]} 
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_FAULTED),
+        .numTransitions = 2,
     },
     /**
      * MOTOR_STATE_RESETTING 状态下不执行任何动作，不接收任何命令，
@@ -515,7 +512,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .transitions = (struct transition[]){
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT]}
         },
-        .numTransitions = N_TRANSITIONS(stateLayer, MOTOR_STATE_RESETTING),
+        .numTransitions = 1,
     },
 };
 
@@ -532,9 +529,9 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .entryAction = A_EnterCyclicTorque,
         .exitAction = A_ExitCyclicTorque,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicTorque, &motionLayer[MOTOR_MOTION_TORQUE_CYCLIC] }
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_TORQUE_CYCLIC] }
         },
-        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_TORQUE_CYCLIC),
+        .numTransitions = 1,
     },
     /**
      * MOTOR_MOTION_VELOCITY_CYCLIC 循环速度模式
@@ -547,9 +544,9 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .entryAction = A_EnterCyclicVelocity,
         .exitAction = A_ExitCyclicVelocity,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicVelocity, &motionLayer[MOTOR_MOTION_VELOCITY_CYCLIC] }
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_VELOCITY_CYCLIC] }
         },
-        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_VELOCITY_CYCLIC),
+        .numTransitions = 1,
     },
     /**
      * MOTOR_MOTION_POSITION_CYCLIC 循环位置模式
@@ -561,9 +558,9 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .entryAction = A_EnterCyclicPosition,
         .exitAction = A_ExitCyclicPosition,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleCyclicPosition, &motionLayer[MOTOR_MOTION_POSITION_CYCLIC] }
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_POSITION_CYCLIC] }
         },
-        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_POSITION_CYCLIC),
+        .numTransitions = 1,
     },
     /**
      * MOTOR_MOTION_VELOCITY_PROFILE 轮廓速度模式
@@ -575,9 +572,9 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .entryAction = A_EnterProfileVelocity,
         .exitAction = A_ExitProfileVelocity,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfileVelocity, &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE] }
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_VELOCITY_PROFILE] }
         },
-        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_VELOCITY_PROFILE),
+        .numTransitions = 1,
     },
     /**
      * MOTOR_MOTION_POSITION_PROFILE 轮廓位置模式
@@ -591,7 +588,7 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
         .transitions = (struct transition[]){
             { MOTOR_EV_CYCLE, NULL, NULL, &A_CycleProfilePosition, &motionLayer[MOTOR_MOTION_POSITION_PROFILE] }
         },
-        .numTransitions = N_TRANSITIONS(motionLayer, MOTOR_MOTION_POSITION_PROFILE),
+        .numTransitions = 1,
     },
 };
 
@@ -631,9 +628,10 @@ void *motor_thread(void *arg)
         Motor_Param_t param;
         struct event ev;
         ev.type = MOTOR_EV_NONE;
-
-        if (dequeue(&cmdQueue, &cmd, 100) == 0) {
+        
+        if (dequeue(&cmdQueue, &cmd, 10) == 0) {
             // Got Command
+            printf("[User] Got user command\n");
             switch (cmd.type) {
                 case MOTOR_CMD_START: 
                     ev.type = MOTOR_EV_START_REQUESTED; 
@@ -677,6 +675,8 @@ void *motor_thread(void *arg)
         // Timeout -> Cycle
         if (ev.type == MOTOR_EV_NONE) ev.type = MOTOR_EV_CYCLE;
         stateM_handleEvent(&fsm, &ev);
+        // int state_ret = stateM_handleEvent(&fsm, &ev);
+        // printf("[User] %d, %s \n", state_ret, ((Context_Self_t *)stateM_currentState(&fsm)->data)->selfn);
          
          // Visual feedback for running
         //  struct state *st = stateM_currentState(&fsm);
@@ -699,7 +699,7 @@ void *input_thread(void *arg)
     while (!ctx.exit_app) 
     {
         if (fgets(line, sizeof(line), stdin)) {
-
+            printf("[User] Got user input\n");
             Motor_Cmd_t cmd;
             memset(&cmd, 0, sizeof(cmd));
             
@@ -773,6 +773,7 @@ void *input_thread(void *arg)
                 }
             }
             if (cmd.type != MOTOR_CMD_NONE) {
+                printf("[User] Sent user command\n");
                 enqueue(&cmdQueue, &cmd, 100);
             }
         }
@@ -860,49 +861,28 @@ static void *auto_flow_thread(void *arg)
 }
 
 
-
-
-static int run_manual_mode(void)
-{
-    // reset_context();
-    newqueue(&cmdQueue, sizeof(Motor_Cmd_t), 10);
-    
-    pthread_t th_motor, th_input;
-    pthread_create(&th_motor, NULL, motor_thread, NULL);
-    pthread_create(&th_input, NULL, input_thread, NULL);
-    
-    pthread_join(th_input, NULL);
-    // User typed exit
-    ctx.exit_app = 1;
-    pthread_join(th_motor, NULL);
-    
-    delequeue(&cmdQueue);
-    return 0;
-}
-
-static int run_auto_mode(void)
-{
-    // reset_context();
-    newqueue(&cmdQueue, sizeof(Motor_Cmd_t), 10);
-
-    pthread_t th_motor, th_auto;
-    pthread_create(&th_motor, NULL, motor_thread, NULL);
-    pthread_create(&th_auto, NULL, auto_flow_thread, NULL);
-
-    pthread_join(th_auto, NULL);
-    pthread_join(th_motor, NULL);
-
-    delequeue(&cmdQueue);
-    puts("[auto] Script completed.");
-    return 0;
-}
-
 int main(int argc, char **argv) 
 {
-    if (argc > 1 && strcmp(argv[1], "--auto") == 0)
-        return run_auto_mode();
+    int run_man = 0;
+    if (argc > 1 && strcmp(argv[1], "--man") == 0)
+       run_man = 1;
+    
+    void *(*ctrl_thread)(void *) = \
+        run_man ? input_thread : auto_flow_thread;
 
-    return run_manual_mode();
+    newqueue(&cmdQueue, sizeof(Motor_Cmd_t), 10);
+
+    pthread_t th_motor, th_ctrl;
+    pthread_create(&th_motor, NULL, motor_thread, NULL);
+    pthread_create(&th_ctrl, NULL, ctrl_thread, NULL);
+
+    pthread_join(th_ctrl, NULL);
+    pthread_join(th_motor, NULL);
+
+    delequeue(&cmdQueue);
+    puts("completed.");
+
+    return 0;
 }
 
 
