@@ -50,10 +50,27 @@ int stateM_handleEvent( struct stateMachine *fsm,
       return stateM_errorStateReached;
    }
 
-   // if ( !fsm->currentState->numTransitions )
-   if ( !fsm->currentState->numTransitions && 
-      (!fsm->currentState->parentState || !fsm->currentState->parentState->numTransitions) )
-      return stateM_noStateChange;
+    // 1. original code
+    // if ( !fsm->currentState->numTransitions )
+    // 2. edition 2
+    // if ( !fsm->currentState->numTransitions && 
+    //    (!fsm->currentState->parentState || !fsm->currentState->parentState->numTransitions) )
+    // 3. edition 3
+    // /* Optimization
+    //  * If no state in the entire hierarchy has any transitions,
+    //  * we can return immediately without traversing the parent chain.
+    //  *
+    //  * We need to check all ancestors because in a hierarchical state machine,
+    //  * events can be handled by any ancestor state.
+    //  */
+    // bool anyTransitions = false;
+    // struct state *checkState = fsm->currentState;
+    // while (checkState && !anyTransitions) {
+    //    anyTransitions = (checkState->numTransitions > 0);
+    //    checkState = checkState->parentState;
+    // }
+    // if (!anyTransitions)
+    //    return stateM_noStateChange;
 
    struct state *nextState = fsm->currentState;
    do {
