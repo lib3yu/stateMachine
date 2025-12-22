@@ -139,7 +139,7 @@ State & Motion Layers
 #define _2str(X_) #X_
 
 typedef union {
-    int8_t   mode;                 /* Control mode (for SET_MODE) */
+    int      mode;                 /* Control mode (for SET_MODE) */
     int16_t  targetTorque;         /* Target value (for SET_TARGET_TORQUE) */
     int32_t  targetVelocity;       /* Target value (for SET_TARGET_VELOCITY) */
     int32_t  targetPosition;       /* Target value (for SET_TARGET_POSITION) */
@@ -184,12 +184,12 @@ typedef enum {
     MOTOR_EV_STOP_REQUESTED,           /* normal stop */
     MOTOR_EV_FAULT_RESET_REQUESTED,    /* reset fault */
     MOTOR_EV_PARAM_UPDATE_REQUESTED,   /* all parameter update */
+    MOTOR_EV_MODE_CHANGE_REQUESTED,    /* change motion mode */
     // add more ...
 } Motor_Event_t;
 
 /* motor parameter type */
 typedef enum {
-    MOTOR_PARAM_MODE,
     MOTOR_PARAM_TARGET_TORQUE,
     MOTOR_PARAM_TARGET_VELOCITY,
     MOTOR_PARAM_TARGET_POSITION,
@@ -200,7 +200,6 @@ typedef enum {
 } Motor_ParamType_t;
 
 #define _param2str(enum_)   \
-    (enum_ == MOTOR_PARAM_MODE)    ? "运动模式" :               \
     (enum_ == MOTOR_PARAM_TARGET_TORQUE)  ? "目标力矩" :        \
     (enum_ == MOTOR_PARAM_TARGET_VELOCITY)  ? "目标速度" :      \
     (enum_ == MOTOR_PARAM_TARGET_POSITION) ? "目标位置" :       \
@@ -283,6 +282,8 @@ static Context_t ctx = {
     .lastMotion = MOTOR_MOTION_VELOCITY_PROFILE,
     .lastMotionState = NULL,
     .pendingMotion = MOTOR_MOTION_VELOCITY_PROFILE,
+    .pendingMotionState = NULL,
+};
 
 
 // ============================================================================
@@ -297,6 +298,7 @@ static bool G_AlignSuccess(void *param, struct event *e){ printf("[Guard] 对齐
 static bool G_IsStopped(void *param, struct event *e){ printf("[Guard] 电机已停止！\n"); return true; }
 static bool G_FaultActive(void *param, struct event *e);
 static bool G_FaultReseted(void *param, struct event *e);
+static bool G_CanChangeMode(void *param, struct event *e);
 
 static bool G_FaultActive(void *param, struct event *e) 
 {
@@ -307,13 +309,35 @@ static bool G_FaultActive(void *param, struct event *e)
     return false;
 }
 
-static bool G_FaultReseted(void *param, struct event *e) 
+static bool G_FaultReseted(void *param, struct event *e)
 {
     if (ctx.fault_active) {
         printf("[Guard] 故障检查处于活动状态！\n");
         return false;
     }
     printf("[Guard] 故障检查已重置！\n");
+    return true;
+}
+
+static bool G_CanChangeMode(void *param, struct event *e)
+{
+    printf("[Guard] 检查模式切换条件...");
+
+    // 不允许切换：存在故障
+    if (ctx.fault_active) {
+        printf("不允许：存在故障\n");
+        return false;
+    }
+
+    // 获取新模式数据
+    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
+
+    // 不允许切换：目标模式与当前模式相同
+    if (newMode == ctx.lastMotion) {
+        printf("不允许：目标模式与当前模式相同\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -333,19 +357,13 @@ static void A_EnterRunning(void *stateData, struct event *e)
     Context_Self_t *self = (Context_Self_t *)stateData;
     Context_t *ctx_ptr = self->ctx;
 
-    // 如果有pending motion，使用它；否则使用last motion
     Motor_MotionMode_t targetMotion = ctx_ptr->pendingMotion;
 
-    printf(">> [State] 进入运行状态。目标运动模式: %s (pending=%s, last=%s)\n",
-           _motion2str(targetMotion), _motion2str(ctx_ptr->pendingMotion), _motion2str(ctx_ptr->lastMotion));
+    printf(">> [State] 进入运行状态。目标运动模式: %s\n", _motion2str(targetMotion));
 
-    // 更新lastMotion和lastMotionState
     ctx_ptr->lastMotion = targetMotion;
     ctx_ptr->lastMotionState = &motionLayer[targetMotion];
-
-    // 重置pending状态（保持一致）
-    ctx_ptr->pendingMotion = targetMotion;
-    // pendingMotionState将在需要时计算
+    stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[targetMotion];
 }
 
 static void A_ExitRunning(void *stateData, struct event *e)
@@ -355,9 +373,6 @@ static void A_ExitRunning(void *stateData, struct event *e)
 
     printf("<< [State] 退出运行状态。当前运动模式: %s\n", _motion2str(ctx_ptr->lastMotion));
 
-    // 当退出RUNNING状态时，确保pending状态与last状态一致
-    ctx_ptr->pendingMotion = ctx_ptr->lastMotion;
-    // pendingMotionState将在需要时计算
 }
 
 static void A_EnterStopping(void *stateData, struct event *e){ printf(">> [State] 进入停止中状态\n"); }
@@ -372,6 +387,20 @@ static void A_ProcessAlign(void *currentStateData, struct event *event, void *ne
 static void A_ProcessStopping(void *currentStateData, struct event *event, void *newStateData ){}
 static void A_UpdateParams(void *currentStateData, struct event *event, void *newStateData );
 static void A_ExitRunning(void *stateData, struct event *e);
+static void A_PrepareModeChange(void *currentStateData, struct event *event, void *newStateData );
+
+
+static void A_PrepareModeChange(void *currentStateData, struct event *e, void *newStateData)
+{
+    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
+
+    printf("[Action] 准备切换到 %s 模式\n", _motion2str(newMode));
+
+    ctx.lastMotion = newMode;
+    ctx.lastMotionState = &motionLayer[newMode];
+    ctx.pendingMotion = newMode;
+    stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[newMode];
+}
 
  
 static void A_UpdateParams(void *currentStateData, struct event *e, void *newStateData)
@@ -382,17 +411,6 @@ static void A_UpdateParams(void *currentStateData, struct event *e, void *newSta
     printf("[Action] 参数更新: 类型=%s", _param2str(param->type));
 
     switch (param->type) {
-        case MOTOR_PARAM_MODE:
-            printf("  运动模式 -> %s\n", _motion2str(param->val.mode));
-            // 用户指定新模式，标记lastMotion为过期
-            ctx.lastMotionExpired = true;
-            // 更新pendingMotion状态，并立即更新RUNNING状态的entryState
-            ctx.pendingMotion = param->val.mode;
-            // 直接更新RUNNING状态的entryState指针，这样下次进入时会使用新模式
-            stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[param->val.mode];
-            // 同时更新lastMotionState，保持上下文一致
-            ctx.lastMotionState = &motionLayer[param->val.mode];
-            break;
         case MOTOR_PARAM_TARGET_TORQUE:
             printf("  目标力矩 -> %d\n", param->val.targetTorque);
             break;
@@ -526,9 +544,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             { MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
             { MOTOR_EV_STOP_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] },
             { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, &A_UpdateParams, &stateLayer[MOTOR_STATE_RUNNING] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, &G_CanChangeMode, &A_PrepareModeChange, &stateLayer[MOTOR_STATE_RUNNING] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] },
         },
-        .numTransitions = 4,
+        .numTransitions = 5,
 
     },
     /**
@@ -572,9 +591,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
             {MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING]},
             {MOTOR_EV_START_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING]},
             {MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, &A_UpdateParams, &stateLayer[MOTOR_STATE_STOPPED]},
+            {MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, NULL, &A_PrepareModeChange, &stateLayer[MOTOR_STATE_STOPPED]},
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
         },
-        .numTransitions = 4,
+        .numTransitions = 5,
     },
     /**
      * MOTOR_STATE_FAULTING 状态下不执行任何动作，不接收任何命令，
@@ -751,8 +771,9 @@ void *motor_thread(void *arg)
                 case MOTOR_CMD_RST_FAULT: 
                     ev.type = MOTOR_EV_FAULT_RESET_REQUESTED; 
                     break;
-                case MOTOR_CMD_SET_MODE: 
-                    EMIT_PARAM(MOTOR_PARAM_MODE, cmd.data);
+                case MOTOR_CMD_SET_MODE:
+                    ev.type = MOTOR_EV_MODE_CHANGE_REQUESTED;
+                    ev.data = &cmd.data.mode;
                     break;
                 case MOTOR_CMD_SET_TARGET_TORQUE:
                     EMIT_PARAM(MOTOR_PARAM_TARGET_TORQUE, cmd.data);
