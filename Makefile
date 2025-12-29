@@ -8,7 +8,7 @@ dist:
 
 test:
 	mkdir -p bin/
-	gcc -std=c99 -I src src/stateMachine.c tests/nestedTest.c  -o bin/test
+	gcc -std=c99 -Wall -I src src/stateMachine.c tests/nestedTest.c  -o bin/test
 	
 clean:
 	rm -rf bin

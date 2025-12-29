@@ -1,9 +1,0 @@
-{
-    "claudeCode.useTerminal": false,
-    "files.readonlyInclude": {
-        "examples/queue.h": true,
-        "examples/queue.c": true,
-        "src/**": true,
-        "tests/nestedTest.c": true,
-    }
-}
