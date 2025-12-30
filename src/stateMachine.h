@@ -489,6 +489,17 @@ struct state *stateM_previousState( struct stateMachine *stateMachine );
  */
 bool stateM_stopped( struct stateMachine *stateMachine );
 
+
+#define StateGuard(func_name_)  StateGuard_##func_name_
+#define TransAction(func_name_) TransAction_##func_name_
+#define EnterAction(func_name_) EnterAction_##func_name_
+#define ExitAction(func_name_)  ExitAction_##func_name_
+
+typedef bool ( *StateGuardDef )( void *condition, struct event *event );
+typedef void ( *TransActionDef )( void *currentStateData, struct event *event, void *newStateData );
+typedef void ( *EnterActionDef )( void *stateData, struct event *event );
+typedef void ( *ExitActionDef )( void *stateData, struct event *event );
+
 #endif // STATEMACHINE_H
 
 /**
