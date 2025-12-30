@@ -402,8 +402,8 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryAction = A_EnterInit,
         .exitAction = NULL,
         .transitions = (struct transition[]){
-             { MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
-             { MOTOR_EV_CYCLE, NULL, &G_InitSuccess, NULL, &stateLayer[MOTOR_STATE_ALIGN] },
+             { MOTOR_EV_CYCLE, NULL, G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
+             { MOTOR_EV_CYCLE, NULL, G_InitSuccess, NULL, &stateLayer[MOTOR_STATE_ALIGN] },
              { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT] }
         },
         .numTransitions = 3,
@@ -443,10 +443,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryAction = A_EnterRunning,
         .exitAction = A_ExitRunning,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
+            { MOTOR_EV_CYCLE, NULL, G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING] },
             { MOTOR_EV_STOP_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] },
-            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, &A_UpdateParams, &stateLayer[MOTOR_STATE_RUNNING] },
-            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, &G_CanChangeMode, &A_PrepareModeChange, &stateLayer[MOTOR_STATE_RUNNING] },
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, A_UpdateParams, &stateLayer[MOTOR_STATE_RUNNING] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, G_CanChangeMode, A_PrepareModeChange, &stateLayer[MOTOR_STATE_RUNNING] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] },
         },
         .numTransitions = 5,
@@ -465,7 +465,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryAction = A_EnterStopping,
         .exitAction = A_ExitStopping,
         .transitions = (struct transition[]){
-            {MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING]},
+            {MOTOR_EV_CYCLE, NULL, G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING]},
             {MOTOR_EV_CYCLE, NULL, G_IsStopped, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
             {MOTOR_EV_CYCLE, NULL, NULL, A_ProcessStopping, &stateLayer[MOTOR_STATE_STOPPING]},
         },
@@ -486,10 +486,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = \
         .entryAction = A_EnterStopped,
         .exitAction = NULL,
         .transitions = (struct transition[]){
-            {MOTOR_EV_CYCLE, NULL, &G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING]},
+            {MOTOR_EV_CYCLE, NULL, G_FaultActive, NULL, &stateLayer[MOTOR_STATE_FAULTING]},
             {MOTOR_EV_START_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING]},
-            {MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, &A_UpdateParams, &stateLayer[MOTOR_STATE_STOPPED]},
-            {MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, NULL, &A_PrepareModeChange, &stateLayer[MOTOR_STATE_STOPPED]},
+            {MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, A_UpdateParams, &stateLayer[MOTOR_STATE_STOPPED]},
+            {MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, NULL, A_PrepareModeChange, &stateLayer[MOTOR_STATE_STOPPED]},
             {MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED]},
         },
         .numTransitions = 5,
