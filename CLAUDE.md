@@ -2,6 +2,76 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
+---
+
+## ⚠️ CRITICAL DESIGN PHILOSOPHY ⚠️
+
+**When reviewing code, prioritize checking adherence to CRITICAL DESIGN PHILOSOPHY above all else.**
+**READ THIS BEFORE WRITING ANY CODE**
+
+### 1. Don't Overthink Interfaces
+
+Interfaces must be **simple, direct, intuitive**. Do not add unnecessary abstraction layers for "flexibility" or "extensibility." Callers need APIs that work directly, not design patterns to decode.
+
+### 2. Don't Over-Defend
+
+Over-defensive programming (excessive parameter validation, error handling branches) makes code harder to read and use. Trust callers to provide valid input, validate only when necessary.
+
+**Principle**: Matching caller expectations is more important than "protecting" them.
+
+### 3. Intuitive Expectations First
+
+Function behavior must match the literal meaning of its name. No hesitation, no confirmations, no surprises.
+
+### 4. Fact-Based Judgments
+
+Judge based on actual use cases, not "might need later." Follow language idioms, don't import patterns from other languages. Performance and readability claims need actual evidence.
+
+### 5. No People-Pleasing
+
+Don't add unnecessary comments to "look professional." Don't over-document "for completeness." State facts, point out issues. No "sandwich method" (compliment-criticize-compliment).
+
+### 6. Code as Doc
+
+Code should be self-documenting. Names and structure should convey intent without requiring external explanation. If you need comments to explain what code does, the code is poorly written.
+
+### 7. Explain Why, Not What
+
+Necessary comments should explain **why**, not repeat **what** the code does.
+
+---
+
+## User Development Plan Implementation Standards
+
+**WORKFLOW FOR HANDLING USER DEVELOPMENT REQUESTS**
+
+### 1. Plan Assessment
+
+When the user proposes a development plan:
+- Fully assess the workload and complexity
+- Provide feedback to the user about the plan's scope
+- The plan remains in a "pending review" state awaiting user approval
+
+### 2. Complexity Evaluation
+
+If the development plan is too complex to complete in one session or would benefit from a multi-step approach:
+- Inform the user of the recommendation to split into stages
+- Explain the rationale for staged implementation
+- Wait for user review and decision before proceeding
+
+### 3. TODO Creation (After Approval)
+
+Once the development plan is approved by the user:
+- Create a complete development plan TODO list
+- Each TODO item must be a **minimal completable unit**:
+  - Can be independently explained
+  - Can be independently tested
+  - Not bloated (single responsibility)
+- This structure facilitates user review and progress tracking
+
+---
+
 ## Project Overview
 
 This is a C99 finite state machine (FSM) library with support for nested states, guarded transitions, event payloads, and entry/exit actions. The library is a standalone C implementation with no external dependencies.
