@@ -29,6 +29,16 @@ extern "C" {
 /* Public macro 0 ------------------------------------------------------------*/
 /* Public typedef ------------------------------------------------------------*/
 
+/* 运动模式枚举（第三层：运动模式层） */
+typedef enum {
+    MOTOR_MOTION_PVM = 0,         /* 轮廓速度（默认） */
+    MOTOR_MOTION_PPM,             /* 轮廓位置 */
+    MOTOR_MOTION_CSV,             /* 循环速度 */
+    MOTOR_MOTION_CSP,             /* 循环位置 */
+    MOTOR_MOTION_CST,             /* 循环力矩 */
+    MAX_MOTOR_MOTION_NUM
+} Motor_MotionMode_t;
+
 /* 命令类型（外部接口） */
 typedef enum {
     MOTOR_CMD_NONE,
@@ -59,6 +69,7 @@ typedef struct {
 typedef struct {
     int exit_app;
     int fault_active;
+    Motor_MotionMode_t pendingMotion;  /* 待切换的运动模式 */
 } Context_t;
 
 /* Public variables ----------------------------------------------------------*/
