@@ -31,36 +31,23 @@ extern "C" {
 /* Private define 0 ----------------------------------------------------------*/
 /* Private macro 0 -----------------------------------------------------------*/
 /* Private typedef -----------------------------------------------------------*/
-/* ===== 第一层：域层（显式定义） ===== */
+/* ===== 状态枚举（统一） ===== */
 typedef enum {
-    MOTOR_DOMAIN_NORMAL_OPERATION,    /* 正常运作域 */
-    MOTOR_DOMAIN_FAULT_MANAGEMENT,    /* 故障处理域 */
-    MAX_MOTOR_DOMAIN_NUM
-} Motor_Domain_t;
-
-/* ===== 第二层：主状态层（分域定义） ===== */
-/* 正常运作域 (NORMAL_OPERATION) 的状态 */
-typedef enum {
-    MOTOR_NORMAL_STATE_POWER_UP,      /* 上电 */
-    MOTOR_NORMAL_STATE_INIT,          /* 初始化 */
-    MOTOR_NORMAL_STATE_ALIGNMENT,     /* 对齐 */
-    MOTOR_NORMAL_STATE_STOPPED,       /* 已停止 */
-    MOTOR_NORMAL_STATE_RUNNING,       /* 运行中（复合状态，包含子状态） */
-    MOTOR_NORMAL_STATE_STOPPING,      /* 停止中 */
-    MAX_MOTOR_NORMAL_NUM
-} Motor_NormalState_t;
-
-/* 故障处理域 (FAULT_MANAGEMENT) 的状态 */
-typedef enum {
-    MOTOR_FAULT_STATE_FAULTING,      /* 故障处理 */
-    MOTOR_FAULT_STATE_FAULTED,       /* 故障锁定 */
-    MAX_MOTOR_FAULT_NUM
-} Motor_FaultState_t;
+    MOTOR_STATE_POWER_UP,      /* 上电 */
+    MOTOR_STATE_INIT,          /* 初始化 */
+    MOTOR_STATE_ALIGNMENT,     /* 对齐 */
+    MOTOR_STATE_STOPPED,       /* 已停止 */
+    MOTOR_STATE_RUNNING,       /* 运行中 */
+    MOTOR_STATE_STOPPING,      /* 停止中 */
+    MOTOR_STATE_FAULTED,       /* 故障锁定 */
+    MAX_MOTOR_STATE_NUM = 7
+} Motor_State_t;
 
 /* 事件类型（内部实现） */
 typedef enum {
     MOTOR_EV_NONE,
     MOTOR_EV_CYCLE,
+    MOTOR_EV_FAULT_ACTIVE, /* 故障激活事件（自动注入） */
     MOTOR_EV_START_REQUESTED,
     MOTOR_EV_STOP_REQUESTED,
     MOTOR_EV_FAULT_RESET_REQUESTED,
@@ -82,11 +69,11 @@ typedef struct {
 } Motor_Param_t;
 
 /* Private variables ---------------------------------------------------------*/
-/* 状态数组声明（按域分层） */
-/* 正常运作域状态数组 */
-static struct state normalStateLayer[MAX_MOTOR_NORMAL_NUM];
-/* 故障处理域状态数组 */
-static struct state faultStateLayer[MAX_MOTOR_FAULT_NUM];
+/* 状态机实例 */
+static struct stateMachine fsm;
+
+/* 状态数组声明 */
+static struct state stateLayer[MAX_MOTOR_STATE_NUM];
 /* 运动模式层状态数组（RUNNING的子状态） */
 static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 
@@ -101,13 +88,14 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 
 /* Private variables ---------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
+/* 故障检查函数 */
+static int CheckFaultActive(void);
+
 /* 守卫函数声明 */
 static bool Guard_PowerGood(void *param, struct event *e);
 static bool Guard_InitSuccess(void *param, struct event *e);
 static bool Guard_AlignSuccess(void *param, struct event *e);
 static bool Guard_IsStopped(void *param, struct event *e);
-static bool Guard_FaultActive(void *param, struct event *e);
-static bool Guard_SevereError(void *param, struct event *e);
 
 /* Entry动作函数声明 */
 static void EnterAction_PowerUp(void *stateData, struct event *e);
@@ -116,7 +104,6 @@ static void EnterAction_Alignment(void *stateData, struct event *e);
 static void EnterAction_Stopped(void *stateData, struct event *e);
 static void EnterAction_Running(void *stateData, struct event *e);
 static void EnterAction_Stopping(void *stateData, struct event *e);
-static void EnterAction_Faulting(void *stateData, struct event *e);
 static void EnterAction_Faulted(void *stateData, struct event *e);
 
 /* 运动模式层Entry/Exit动作函数声明 */
@@ -134,6 +121,16 @@ static void ExitAction_MotionCST(void *stateData, struct event *e);
 /* Private define 2 ----------------------------------------------------------*/
 /* Private macro 2 -----------------------------------------------------------*/
 /* Private function code -----------------------------------------------------*/
+
+/* ===== 故障检查函数实现 ===== */
+/* 返回1表示故障激活，0表示无故障 */
+static int CheckFaultActive(void) {
+    if (ctx.fault_active) {
+        // printf("[CheckFaultActive] 检测到故障！\n");
+        return 1;
+    }
+    return 0;
+}
 
 /* ===== 守卫函数实现 ===== */
 static bool Guard_PowerGood(void *param, struct event *e) {
@@ -158,21 +155,6 @@ static bool Guard_IsStopped(void *param, struct event *e) {
     (void)param; (void)e;
     printf("[Guard] 速度归零，停止完成\n");
     return true;
-}
-
-static bool Guard_FaultActive(void *param, struct event *e) {
-    (void)param; (void)e;
-    if (ctx.fault_active) {
-        printf("[Guard] 检测到故障(Fault_Active/exFault)！\n");
-        return true;
-    }
-    return false;
-}
-
-static bool Guard_SevereError(void *param, struct event *e) {
-    (void)param; (void)e;
-    printf("[Guard] 检测到严重错误，需终止\n");
-    return false;
 }
 
 /* ===== Entry动作函数实现 ===== */
@@ -204,11 +186,6 @@ static void EnterAction_Running(void *stateData, struct event *e) {
 static void EnterAction_Stopping(void *stateData, struct event *e) {
     (void)stateData; (void)e;
     printf(">> [State] 进入停止中状态 (减速停车中/抱闸介入)\n");
-}
-
-static void EnterAction_Faulting(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
-    printf(">> [State] 进入故障处理状态 (紧急动作:切断输出/抱闸锁死)\n");
 }
 
 static void EnterAction_Faulted(void *stateData, struct event *e) {
@@ -267,74 +244,170 @@ static void ExitAction_MotionCST(void *stateData, struct event *e) {
     printf("  [Motion] 退出循环力矩模式(CST)\n");
 }
 
+/* ===== 状态数组初始化 ===== */
+static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
+    /* POWER_UP：上电状态 */
+    [MOTOR_STATE_POWER_UP] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_PowerUp,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
+            { MOTOR_EV_CYCLE, NULL, Guard_PowerGood, NULL, &stateLayer[MOTOR_STATE_INIT] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_POWER_UP] }
+        },
+        .numTransitions = 3,
+    },
+    /* INIT：初始化状态 */
+    [MOTOR_STATE_INIT] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_Init,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
+            { MOTOR_EV_CYCLE, NULL, Guard_InitSuccess, NULL, &stateLayer[MOTOR_STATE_ALIGNMENT] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT] }
+        },
+        .numTransitions = 3,
+    },
+    /* ALIGNMENT：对齐状态 */
+    [MOTOR_STATE_ALIGNMENT] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_Alignment,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
+            { MOTOR_EV_CYCLE, NULL, Guard_AlignSuccess, NULL, &stateLayer[MOTOR_STATE_STOPPED] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_ALIGNMENT] }
+        },
+        .numTransitions = 3,
+    },
+    /* STOPPED：已停止状态 */
+    [MOTOR_STATE_STOPPED] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_Stopped,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
+            { MOTOR_EV_START_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED] }
+        },
+        .numTransitions = 3,
+    },
+    /* RUNNING：运行状态 */
+    [MOTOR_STATE_RUNNING] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_Running,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
+            { MOTOR_EV_STOP_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }
+        },
+        .numTransitions = 3,
+    },
+    /* STOPPING：停止中状态 */
+    [MOTOR_STATE_STOPPING] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_Stopping,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
+            { MOTOR_EV_CYCLE, NULL, Guard_IsStopped, NULL, &stateLayer[MOTOR_STATE_STOPPED] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] }
+        },
+        .numTransitions = 3,
+    },
+    /* FAULTED：故障锁定状态 */
+    [MOTOR_STATE_FAULTED] = {
+        .parentState = NULL,
+        .data = &ctx,
+        .entryState = NULL,
+        .entryAction = EnterAction_Faulted,
+        .exitAction = NULL,
+        .transitions = (struct transition[]){
+            { MOTOR_EV_FAULT_RESET_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_INIT] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] }
+        },
+        .numTransitions = 2,
+    },
+};
+
 /* ===== 运动模式层状态数组初始化 ===== */
-/* 注意：由于normalStateLayer在此时尚未初始化，这里使用NULL作为parentState占位 */
-/* 在运行时通过init_context()函数设置正确的parentState指针 */
+/* 注意：stateLayer 已在本文件之前定义，此处可直接静态引用 &stateLayer[MOTOR_STATE_RUNNING] */
+/* 故障事件会自动冒泡到父状态RUNNING处理 */
 static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
     /* 轮廓速度模式 (PVM) - 默认模式 */
     [MOTOR_MOTION_PVM] = {
-        .parentState = NULL,  /* 运行时设置为&normalStateLayer[MOTOR_NORMAL_STATE_RUNNING] */
+        .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .data = (void*)"PVM",
         .entryState = NULL,
         .entryAction = EnterAction_MotionPVM,
         .exitAction = ExitAction_MotionPVM,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, Guard_FaultActive, NULL, NULL },  /* nextState运行时设置 */
-            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_PVM] }
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_PVM] }  /* 自循环维持当前模式 */
         },
-        .numTransitions = 2,
+        .numTransitions = 1,
     },
     /* 轮廓位置模式 (PPM) */
     [MOTOR_MOTION_PPM] = {
-        .parentState = NULL,  /* 运行时设置 */
+        .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .data = (void*)"PPM",
         .entryState = NULL,
         .entryAction = EnterAction_MotionPPM,
         .exitAction = ExitAction_MotionPPM,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, Guard_FaultActive, NULL, NULL },  /* 运行时设置 */
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_PPM] }
         },
-        .numTransitions = 2,
+        .numTransitions = 1,
     },
     /* 循环速度模式 (CSV) */
     [MOTOR_MOTION_CSV] = {
-        .parentState = NULL,  /* 运行时设置 */
+        .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .data = (void*)"CSV",
         .entryState = NULL,
         .entryAction = EnterAction_MotionCSV,
         .exitAction = ExitAction_MotionCSV,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, Guard_FaultActive, NULL, NULL },  /* 运行时设置 */
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_CSV] }
         },
-        .numTransitions = 2,
+        .numTransitions = 1,
     },
     /* 循环位置模式 (CSP) */
     [MOTOR_MOTION_CSP] = {
-        .parentState = NULL,  /* 运行时设置 */
+        .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .data = (void*)"CSP",
         .entryState = NULL,
         .entryAction = EnterAction_MotionCSP,
         .exitAction = ExitAction_MotionCSP,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, Guard_FaultActive, NULL, NULL },  /* 运行时设置 */
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_CSP] }
         },
-        .numTransitions = 2,
+        .numTransitions = 1,
     },
     /* 循环力矩模式 (CST) */
     [MOTOR_MOTION_CST] = {
-        .parentState = NULL,  /* 运行时设置 */
+        .parentState = &stateLayer[MOTOR_STATE_RUNNING],
         .data = (void*)"CST",
         .entryState = NULL,
         .entryAction = EnterAction_MotionCST,
         .exitAction = ExitAction_MotionCST,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, Guard_FaultActive, NULL, NULL },  /* 运行时设置 */
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_CST] }
         },
-        .numTransitions = 2,
+        .numTransitions = 1,
     },
 };
 
@@ -360,6 +433,11 @@ void *motor_thread(void *arg)
     (void)arg;
 
     printf("[Motor] Thread started\n");
+
+    /* 初始化状态机 */
+    stateM_init(&fsm, &stateLayer[MOTOR_STATE_POWER_UP],
+                &stateLayer[MOTOR_STATE_FAULTED]);
+    printf("[Motor] State machine initialized\n");
 
     while (!ctx.exit_app) {
         Motor_Cmd_t cmd;
@@ -426,13 +504,27 @@ void *motor_thread(void *arg)
                     ev.type = MOTOR_EV_NONE;
                     break;
             }
-            /* TODO: stateM_handleEvent(&fsm, &ev); */
         }
 
-        /* 无命令时发送 CYCLE 事件 */
-        if (ev.type == MOTOR_EV_NONE) {
-            /* printf("[Motor] Cycle\n"); */
-            /* TODO: ev.type = MOTOR_EV_CYCLE; stateM_handleEvent(&fsm, &ev); */
+        /* 故障检查优先
+         * 故障检测放在主循环而非守卫函数的原因：
+         * 1. 故障需要立即响应，优先级高于所有命令事件
+         * 2. 避免在每个状态的转换中都重复定义故障守卫
+         * 3. 简化 motionLayer，故障事件自动冒泡到父状态RUNNING处理
+         */
+        if (CheckFaultActive()) {
+            /* 故障激活，发送故障事件（优先级最高） */
+            ev.type = MOTOR_EV_FAULT_ACTIVE;
+            ev.data = NULL;
+            stateM_handleEvent(&fsm, &ev);
+        } else if (ev.type != MOTOR_EV_NONE) {
+            /* 有命令事件，处理命令 */
+            stateM_handleEvent(&fsm, &ev);
+        } else {
+            /* 无命令且无故障，发送CYCLE事件维持状态机运行 */
+            ev.type = MOTOR_EV_CYCLE;
+            ev.data = NULL;
+            stateM_handleEvent(&fsm, &ev);
         }
 
         /* 10ms周期 */
