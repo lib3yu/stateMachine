@@ -78,16 +78,20 @@ static void *auto_flow_thread(void *arg)
 {
     (void)arg;
 
-    /* 脚本定义：演示完整的电机控制流程 */
+    /* 脚本定义：演示完整的电机控制流程（12步） */
     static const MotorAutoStep_t script[] = {
-        { MOTOR_CMD_SET_MODE,           .data.mode = 0,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 设置PVM模式", .fault_flag = -1 },
-        { MOTOR_CMD_SET_ACCELERATION,  .data.acceleration = 200, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 设置加速度200", .fault_flag = -1 },
-        { MOTOR_CMD_START,             .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 启动电机", .fault_flag = -1 },
-        { MOTOR_CMD_SET_TARGET_VELOCITY, .data.targetVelocity = 1200, .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 设置速度1200", .fault_flag = -1 },
-        { MOTOR_CMD_SET_TARGET_POSITION, .data.targetPosition = 500,  .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 设置位置500", .fault_flag = -1 },
-        { MOTOR_CMD_NONE,              .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 注入故障", .fault_flag = 1 },
-        { MOTOR_CMD_RST_FAULT,         .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 复位故障", .fault_flag = 0 },
-        { MOTOR_CMD_STOP,              .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 停止电机", .fault_flag = -1 },
+        { MOTOR_CMD_SET_MODE,             .data.mode = 0,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 1. 设置PVM模式", .fault_flag = -1 },
+        { MOTOR_CMD_SET_ACCELERATION,    .data.acceleration = 200, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 2. 设置加速度200", .fault_flag = -1 },
+        { MOTOR_CMD_START,               .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 3. 启动电机", .fault_flag = -1 },
+        { MOTOR_CMD_SET_TARGET_VELOCITY, .data.targetVelocity = 1200, .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 4. 设置速度1200", .fault_flag = -1 },
+        { MOTOR_CMD_STOP,                .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 5. 停止电机", .fault_flag = -1 },
+        { MOTOR_CMD_START,               .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 6. 停止后重新启动", .fault_flag = -1 },
+        { MOTOR_CMD_SET_MODE,             .data.mode = 1,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 7. 切换到PPM模式", .fault_flag = -1 },
+        { MOTOR_CMD_SET_TARGET_POSITION, .data.targetPosition = 500,  .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 8. 设置位置500", .fault_flag = -1 },
+        { MOTOR_CMD_NONE,                .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 9. 注入故障", .fault_flag = 1 },
+        { MOTOR_CMD_RST_FAULT,           .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 10. 复位故障", .fault_flag = 0 },
+        { MOTOR_CMD_SET_TARGET_POSITION, .data.targetPosition = -200, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 11. 设置位置-200", .fault_flag = -1 },
+        { MOTOR_CMD_STOP,                .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 12. 最终停止", .fault_flag = -1 },
     };
 
     const size_t n = sizeof(script) / sizeof(script[0]);
