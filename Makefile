@@ -17,5 +17,12 @@ motor3hsm:
 		examples/motor3hsm.c examples/motor3hsm_input.c \
 		-o bin/motor3hsm -lpthread
 
+state402:
+	mkdir -p bin/
+	gcc -O0 -g -std=c99 -D_DEFAULT_SOURCE -Isrc -Iexamples \
+		src/stateMachine.c examples/queue.c \
+		examples/state402.c examples/state402_input.c \
+		-o bin/state402 -lpthread
+
 clean:
 	rm -rf bin
