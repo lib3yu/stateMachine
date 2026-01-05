@@ -155,6 +155,18 @@ doxygen doc/doxyconfig
 - Pointer-based state linking (no dynamic allocation required)
 - Error handling through return codes and error state transitions
 
+## File Structure Standards
+
+**All new files MUST follow the structure defined in [examples/template.h](examples/template.h) and [examples/template.c](examples/template.c).**
+
+### Key Rules
+
+1. **Header guards**: Use `USERAPP_<MODULE>_H` pattern
+2. **C++ compatibility**: Always wrap with `extern "C"`
+3. **Numbered sections**: Use 0, 1, 2 hierarchy for logical grouping
+4. **License header**: Copy exactly from template files
+5. **Empty sections**: Keep section markers even if empty (maintains structure)
+
 ## Integration
 To use this library in another project:
 1. Copy `src/stateMachine.h` and `src/stateMachine.c` into your project
