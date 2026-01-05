@@ -33,14 +33,14 @@ extern "C" {
 typedef enum {
     STATE402_CMD_NONE,
 
-    /* 状态转换命令 */
+    /* 用户控制命令（上→下：响应上位机） */
     STATE402_CMD_ENABLE,           /* Ready → Operation Enabled */
     STATE402_CMD_DISABLE,          /* Operation Enabled → Ready */
+    STATE402_CMD_FAULT_RESET,      /* Fault → Ready（需故障已清除）*/
 
-    /* 故障管理命令 */
-    STATE402_CMD_INJECT_FAULT,     /* 任何状态 → Fault（显式故障注入） */
-    STATE402_CMD_CLEAR_FAULT,      /* 清除故障条件 */
-    STATE402_CMD_FAULT_RESET,      /* Fault → Ready（故障复位） */
+    /* 硬件事件模拟（下→上：模拟底层上报） */
+    STATE402_CMD_REPORT_FAULT,     /* 模拟底层上报故障 */
+    STATE402_CMD_REPORT_CLEAR,     /* 模拟底层上报故障清除 */
 } State402_CmdType_t;
 
 /* 故障类型枚举 */

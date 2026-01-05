@@ -214,18 +214,18 @@ void *state402_thread(void *arg)
                     ev.type = STATE402_EV_DISABLE_REQUESTED;
                     printf("[State402] Received: DISABLE\n");
                     break;
-                case STATE402_CMD_INJECT_FAULT:
-                    /* 设置故障状态和类型 */
+                case STATE402_CMD_REPORT_FAULT:
+                    /* 模拟底层上报故障 */
                     state402_ctx.fault_active = 1;
                     state402_ctx.current_fault = cmd.data.fault_type;
                     ev.type = STATE402_EV_FAULT_ACTIVE;
-                    printf("[State402] Received: INJECT_FAULT (type=%d)\n", cmd.data.fault_type);
+                    printf("[State402] HW Report: FAULT (type=%d)\n", cmd.data.fault_type);
                     break;
-                case STATE402_CMD_CLEAR_FAULT:
-                    /* 清除故障条件 */
+                case STATE402_CMD_REPORT_CLEAR:
+                    /* 模拟底层上报故障清除 */
                     state402_ctx.fault_active = 0;
                     state402_ctx.current_fault = STATE402_FAULT_NONE;
-                    printf("[State402] Received: CLEAR_FAULT\n");
+                    printf("[State402] HW Report: FAULT_CLEARED\n");
                     break;
                 case STATE402_CMD_FAULT_RESET:
                     /* 检查故障是否已清除 */

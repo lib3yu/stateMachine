@@ -88,16 +88,16 @@ static void *auto_flow_thread(void *arg)
 
         /* 运行态故障测试 */
         { STATE402_CMD_ENABLE, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 4. 重新 Enable" },
-        { STATE402_CMD_INJECT_FAULT, .data.fault_type = STATE402_FAULT_OVERCURRENT, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 5. 注入过流故障" },
+        { STATE402_CMD_REPORT_FAULT, .data.fault_type = STATE402_FAULT_OVERCURRENT, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 5. HW上报过流故障" },
 
         /* 故障恢复流程 */
         { STATE402_CMD_FAULT_RESET, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 6. 尝试复位（应失败）" },
-        { STATE402_CMD_CLEAR_FAULT, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 7. 清除故障" },
+        { STATE402_CMD_REPORT_CLEAR, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 7. HW上报故障清除" },
         { STATE402_CMD_FAULT_RESET, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 8. 复位到Ready" },
 
         /* 待机态故障测试 */
-        { STATE402_CMD_INJECT_FAULT, .data.fault_type = STATE402_FAULT_EMERGENCY_STOP, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 9. 急停触发" },
-        { STATE402_CMD_CLEAR_FAULT, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 10. 解除急停" },
+        { STATE402_CMD_REPORT_FAULT, .data.fault_type = STATE402_FAULT_EMERGENCY_STOP, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 9. HW上报急停" },
+        { STATE402_CMD_REPORT_CLEAR, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 10. HW上报急停清除" },
         { STATE402_CMD_FAULT_RESET, .data = {0}, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 11. 故障复位" },
 
         /* 最终退出 */
