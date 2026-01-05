@@ -5,3 +5,5 @@ cscope.out
 doc/output
 bin
 .vscode/
+.claude/
+
