@@ -111,32 +111,64 @@ The build uses `gcc -std=c99 -I src` and compiles `src/stateMachine.c` with `exa
 - `event`: Contains type and optional payload (void pointer data)
 - `transition`: Links states with guard conditions and actions
 - `state`: Contains transitions array, parent/child relationships, entry/exit actions
-- `stateMachine`: Holds current/previous state, error state
+- `stateMachine`: Holds current/previous state, error state, and user context
 
 ### Key Features
 1. **Nested States**: Parent-child relationships with inheritance of transitions
-2. **Guarded Transitions**: Conditional transitions with guard functions
-3. **Event Payloads**: Arbitrary data passed with events
-4. **Entry/Exit Actions**: Functions called when entering/exiting states
-5. **Transition Actions**: Functions executed during state changes
-6. **Error State Handling**: Configurable error state for invalid transitions
-7. **Final States**: States that stop the state machine
+2. **Multi-Instance Support**: Each FSM instance has a `userData` pointer for instance-specific context
+3. **Guarded Transitions**: Conditional transitions with guard functions
+4. **Event Payloads**: Arbitrary data passed with events
+5. **Entry/Exit Actions**: Functions called when entering/exiting states
+6. **Transition Actions**: Functions executed during state changes
+7. **Error State Handling**: Configurable error state for invalid transitions
+8. **Final States**: States that stop the state machine
+
+### Callback Signatures
+All callbacks receive `struct stateMachine *fsm` as the first parameter, providing access to `fsm->userData`:
+- `guard(fsm, condition, event)`: Returns bool to allow/deny transition
+- `action(fsm, currentStateData, event, newStateData)`: Executes during transition
+- `entryAction(fsm, stateData, event)`: Called when entering a state
+- `exitAction(fsm, stateData, event)`: Called when exiting a state
 
 ### API Functions
-- `stateM_init()`: Initialize state machine with initial and error states
-- `stateM_handleEvent()`: Process events and trigger state transitions
-- `stateM_currentState()`: Get current state
-- `stateM_previousState()`: Get previous state
-- `stateM_stopped()`: Check if state machine has stopped (reached final state)
+- `stateM_init(fsm, initialState, errorState, userData)`: Initialize state machine with initial state, error state, and user context
+- `stateM_handleEvent(fsm, event)`: Process events and trigger state transitions
+- `stateM_currentState(fsm)`: Get current state
+- `stateM_previousState(fsm)`: Get previous state
+- `stateM_stopped(fsm)`: Check if state machine has stopped (reached final state)
 
 ## Development Workflow
 
 ### Creating a New State Machine
-1. Define state structures with transitions arrays
-2. Link states using pointers (parent/child relationships)
-3. Implement guard functions, actions, and entry/exit routines
-4. Initialize with `stateM_init()`
-5. Process events with `stateM_handleEvent()`
+1. Define your context structure (if using instance-specific data)
+2. Define state structures with transitions arrays
+3. Link states using pointers (parent/child relationships)
+4. Implement guard functions, actions, and entry/exit routines (all receive `fsm` as first parameter)
+5. Initialize with `stateM_init(fsm, initialState, errorState, userData)`
+6. Process events with `stateM_handleEvent(fsm, event)`
+
+### Multi-Instance Example
+```c
+// Define context for each instance
+typedef struct {
+    int id;
+    int value;
+} MyContext_t;
+
+// Create two independent FSM instances
+struct stateMachine fsm1, fsm2;
+MyContext_t ctx1 = { .id = 1, .value = 10 };
+MyContext_t ctx2 = { .id = 2, .value = 20 };
+
+stateM_init(&fsm1, &initialState, &errorState, &ctx1);
+stateM_init(&fsm2, &initialState, &errorState, &ctx2);
+
+// Callbacks can access instance-specific data via fsm->userData
+static void myAction(struct stateMachine *fsm, void *stateData, struct event *e) {
+    MyContext_t *ctx = (MyContext_t *)fsm->userData;
+    printf("Instance %d, value %d\n", ctx->id, ctx->value);
+}
+```
 
 ### Running Tests
 The test file `nestedTest.c` is a standalone C program. To run it:

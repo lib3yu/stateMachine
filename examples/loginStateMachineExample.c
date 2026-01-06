@@ -71,40 +71,40 @@ struct UIStateData {
 };
 
 /* 守卫函数声明 */
-static bool validateLoginData(void *condition, struct event *event);
-static bool checkSessionValid(void *condition, struct event *event);
+static bool validateLoginData(struct stateMachine *fsm, void *condition, struct event *event);
+static bool checkSessionValid(struct stateMachine *fsm, void *condition, struct event *event);
 
 /* 进入/退出动作函数声明 */
-static void enterUnauthenticated(void *stateData, struct event *event);
-static void exitUnauthenticated(void *stateData, struct event *event);
-static void enterIdle(void *stateData, struct event *event);
-static void exitIdle(void *stateData, struct event *event);
-static void enterLoggingIn(void *stateData, struct event *event);
-static void exitLoggingIn(void *stateData, struct event *event);
-static void enterLoginFailed(void *stateData, struct event *event);
-static void exitLoginFailed(void *stateData, struct event *event);
-static void enterAuthenticated(void *stateData, struct event *event);
-static void exitAuthenticated(void *stateData, struct event *event);
-static void enterLoggedIn(void *stateData, struct event *event);
-static void exitLoggedIn(void *stateData, struct event *event);
-static void enterLoggingOut(void *stateData, struct event *event);
-static void exitLoggingOut(void *stateData, struct event *event);
-static void handleError(void *stateData, struct event *event);
+static void enterUnauthenticated(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitUnauthenticated(struct stateMachine *fsm, void *stateData, struct event *event);
+static void enterIdle(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitIdle(struct stateMachine *fsm, void *stateData, struct event *event);
+static void enterLoggingIn(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitLoggingIn(struct stateMachine *fsm, void *stateData, struct event *event);
+static void enterLoginFailed(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitLoginFailed(struct stateMachine *fsm, void *stateData, struct event *event);
+static void enterAuthenticated(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitAuthenticated(struct stateMachine *fsm, void *stateData, struct event *event);
+static void enterLoggedIn(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitLoggedIn(struct stateMachine *fsm, void *stateData, struct event *event);
+static void enterLoggingOut(struct stateMachine *fsm, void *stateData, struct event *event);
+static void exitLoggingOut(struct stateMachine *fsm, void *stateData, struct event *event);
+static void handleError(struct stateMachine *fsm, void *stateData, struct event *event);
 
 /* 转换动作函数声明 */
-static void initiateLogin(void *currentStateData, struct event *event,
+static void initiateLogin(struct stateMachine *fsm, void *currentStateData, struct event *event,
                           void *newStateData);
-static void handleLoginSuccess(void *currentStateData, struct event *event,
+static void handleLoginSuccess(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                void *newStateData);
-static void handleLoginFailure(void *currentStateData, struct event *event,
+static void handleLoginFailure(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                void *newStateData);
-static void transitionToAuthenticated(void *currentStateData, struct event *event,
+static void transitionToAuthenticated(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                       void *newStateData);
-static void initiateLogout(void *currentStateData, struct event *event,
+static void initiateLogout(struct stateMachine *fsm, void *currentStateData, struct event *event,
                            void *newStateData);
-static void handleLogoutComplete(void *currentStateData, struct event *event,
+static void handleLogoutComplete(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                  void *newStateData);
-static void handleSessionTimeout(void *currentStateData, struct event *event,
+static void handleSessionTimeout(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                  void *newStateData);
 
 /* 状态声明 - 按照逻辑顺序定义 */
@@ -231,7 +231,7 @@ static struct state ErrorState = {
 /* ================== 守卫函数实现 ================== */
 
 /* 验证登录数据 */
-static bool validateLoginData(void *condition, struct event *event) {
+static bool validateLoginData(struct stateMachine *fsm, void *condition, struct event *event) {
    struct LoginData *loginData = (struct LoginData *)event->data;
 
    if (loginData == NULL) {
@@ -263,7 +263,7 @@ static bool validateLoginData(void *condition, struct event *event) {
 }
 
 /* 检查会话有效性 */
-static bool checkSessionValid(void *condition, struct event *event) {
+static bool checkSessionValid(struct stateMachine *fsm, void *condition, struct event *event) {
    struct UIStateData *uiData = (struct UIStateData *)condition;
 
    if (uiData == NULL) {
@@ -283,91 +283,91 @@ static bool checkSessionValid(void *condition, struct event *event) {
 
 /* ================== 进入/退出动作函数实现 ================== */
 
-static void enterUnauthenticated(void *stateData, struct event *event) {
+static void enterUnauthenticated(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入未认证状态\n");
    printf("    显示登录界面\n");
    printf("    清除用户会话数据\n");
 }
 
-static void exitUnauthenticated(void *stateData, struct event *event) {
+static void exitUnauthenticated(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出未认证状态\n");
    printf("    隐藏登录界面\n");
 }
 
-static void enterIdle(void *stateData, struct event *event) {
+static void enterIdle(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入空闲状态\n");
    printf("    等待用户输入\n");
    printf("    显示登录表单\n");
 }
 
-static void exitIdle(void *stateData, struct event *event) {
+static void exitIdle(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出空闲状态\n");
    printf("    隐藏登录表单\n");
 }
 
-static void enterLoggingIn(void *stateData, struct event *event) {
+static void enterLoggingIn(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入登录中状态\n");
    printf("    显示加载动画\n");
    printf("    禁用登录按钮\n");
    printf("    发送登录请求到服务器\n");
 }
 
-static void exitLoggingIn(void *stateData, struct event *event) {
+static void exitLoggingIn(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出登录中状态\n");
    printf("    隐藏加载动画\n");
    printf("    启用登录按钮\n");
 }
 
-static void enterLoginFailed(void *stateData, struct event *event) {
+static void enterLoginFailed(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入登录失败状态\n");
    printf("    显示错误消息\n");
    printf("    高亮错误的输入字段\n");
    printf("    提供重试选项\n");
 }
 
-static void exitLoginFailed(void *stateData, struct event *event) {
+static void exitLoginFailed(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出登录失败状态\n");
    printf("    清除错误消息\n");
    printf("    重置输入字段\n");
 }
 
-static void enterAuthenticated(void *stateData, struct event *event) {
+static void enterAuthenticated(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入已认证状态\n");
    printf("    设置认证标志\n");
    printf("    加载用户数据\n");
 }
 
-static void exitAuthenticated(void *stateData, struct event *event) {
+static void exitAuthenticated(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出已认证状态\n");
    printf("    清除认证标志\n");
    printf("    保存用户数据\n");
 }
 
-static void enterLoggedIn(void *stateData, struct event *event) {
+static void enterLoggedIn(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入已登录状态\n");
    printf("    显示主界面\n");
    printf("    显示欢迎消息\n");
    printf("    显示用户头像\n");
 }
 
-static void exitLoggedIn(void *stateData, struct event *event) {
+static void exitLoggedIn(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出已登录状态\n");
    printf("    隐藏主界面\n");
    printf("    清除欢迎消息\n");
 }
 
-static void enterLoggingOut(void *stateData, struct event *event) {
+static void enterLoggingOut(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf(">>> 进入注销中状态\n");
    printf("    显示注销确认对话框\n");
    printf("    发送注销请求到服务器\n");
 }
 
-static void exitLoggingOut(void *stateData, struct event *event) {
+static void exitLoggingOut(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("<<< 退出注销中状态\n");
    printf("    隐藏注销确认对话框\n");
 }
 
-static void handleError(void *stateData, struct event *event) {
+static void handleError(struct stateMachine *fsm, void *stateData, struct event *event) {
    printf("### 错误状态 ###\n");
    printf("    发生未预期的错误\n");
    printf("    显示错误界面\n");
@@ -376,7 +376,7 @@ static void handleError(void *stateData, struct event *event) {
 
 /* ================== 转换动作函数实现 ================== */
 
-static void initiateLogin(void *currentStateData, struct event *event,
+static void initiateLogin(struct stateMachine *fsm, void *currentStateData, struct event *event,
                           void *newStateData) {
    struct LoginData *loginData = (struct LoginData *)event->data;
 
@@ -389,7 +389,7 @@ static void initiateLogin(void *currentStateData, struct event *event,
    printf("    [模拟] 正在验证用户凭据...\n");
 }
 
-static void handleLoginSuccess(void *currentStateData, struct event *event,
+static void handleLoginSuccess(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                void *newStateData) {
    printf("*** 转换动作：处理登录成功 ***\n");
    printf("    保存用户会话\n");
@@ -397,7 +397,7 @@ static void handleLoginSuccess(void *currentStateData, struct event *event,
    printf("    跳转到主界面\n");
 }
 
-static void handleLoginFailure(void *currentStateData, struct event *event,
+static void handleLoginFailure(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                void *newStateData) {
    printf("*** 转换动作：处理登录失败 ***\n");
    printf("    显示错误消息\n");
@@ -405,7 +405,7 @@ static void handleLoginFailure(void *currentStateData, struct event *event,
    printf("    记录登录失败尝试\n");
 }
 
-static void transitionToAuthenticated(void *currentStateData, struct event *event,
+static void transitionToAuthenticated(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                       void *newStateData) {
    printf("*** 转换动作：转换到已认证状态 ***\n");
    printf("    设置认证标志\n");
@@ -413,7 +413,7 @@ static void transitionToAuthenticated(void *currentStateData, struct event *even
    printf("    初始化用户首选项\n");
 }
 
-static void initiateLogout(void *currentStateData, struct event *event,
+static void initiateLogout(struct stateMachine *fsm, void *currentStateData, struct event *event,
                            void *newStateData) {
    printf("*** 转换动作：初始化注销 ***\n");
    printf("    显示注销确认对话框\n");
@@ -421,7 +421,7 @@ static void initiateLogout(void *currentStateData, struct event *event,
    printf("    清理本地用户数据\n");
 }
 
-static void handleLogoutComplete(void *currentStateData, struct event *event,
+static void handleLogoutComplete(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                  void *newStateData) {
    printf("*** 转换动作：处理注销完成 ***\n");
    printf("    清除用户会话\n");
@@ -429,7 +429,7 @@ static void handleLogoutComplete(void *currentStateData, struct event *event,
    printf("    重置应用程序状态\n");
 }
 
-static void handleSessionTimeout(void *currentStateData, struct event *event,
+static void handleSessionTimeout(struct stateMachine *fsm, void *currentStateData, struct event *event,
                                  void *newStateData) {
    printf("*** 转换动作：处理会话超时 ***\n");
    printf("    显示会话超时警告\n");
@@ -474,7 +474,7 @@ int main(void) {
    struct stateMachine fsm;
 
    /* 初始化状态机，从空闲状态开始 */
-   stateM_init(&fsm, &IdleState, &ErrorState);
+   stateM_init(&fsm, &IdleState, &ErrorState, NULL);
 
    printf("========================================\n");
    printf(" 两层分层状态机示例：UI登录/注销流程\n");

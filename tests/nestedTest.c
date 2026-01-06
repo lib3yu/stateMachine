@@ -71,11 +71,11 @@ struct eventPayload
    const char *expectedState;
 };
 
-static void entryAction( void *stateData, struct event *event );
-static void exitAction( void *stateData, struct event *event );
-static void transAction( void *oldStateData, struct event *event,
+static void entryAction( struct stateMachine *fsm, void *stateData, struct event *event );
+static void exitAction( struct stateMachine *fsm, void *stateData, struct event *event );
+static void transAction( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData );
-static bool guard( void *condition, struct event *event );
+static bool guard( struct stateMachine *fsm, void *condition, struct event *event );
 
 static struct state s1, s2, s3, s4, s5, s6, s9, s10, s11, sE;
 
@@ -197,7 +197,7 @@ s1 =
 int main()
 {
    struct stateMachine fsm;
-   stateM_init( &fsm, &s1, &sE );
+   stateM_init( &fsm, &s1, &sE, NULL );
 
    struct event events[] = {
       /* Create transitions, with the single character as triggering event
@@ -277,23 +277,26 @@ int main()
    return 0;
 }
 
-static void entryAction( void *stateData, struct event *event )
+static void entryAction( struct stateMachine *fsm, void *stateData, struct event *event )
 {
+   (void)fsm;
    const char *stateName = (const char *)stateData;
 
    printf( "Entering %s\n", stateName );
 }
 
-static void exitAction( void *stateData, struct event *event )
+static void exitAction( struct stateMachine *fsm, void *stateData, struct event *event )
 {
+   (void)fsm;
    const char *stateName = (const char *)stateData;
 
    printf( "Exiting %s\n", stateName );
 }
 
-static void transAction( void *oldStateData, struct event *event,
+static void transAction( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData )
 {
+   (void)fsm;
    struct eventPayload *eventData = (struct eventPayload *)event->data;
 
    printf( "Event '%c'\n", eventData->data );
@@ -306,8 +309,9 @@ static void transAction( void *oldStateData, struct event *event,
    }
 }
 
-static bool guard( void *condition, struct event *event )
+static bool guard( struct stateMachine *fsm, void *condition, struct event *event )
 {
+   (void)fsm;
    struct eventPayload *eventData = (struct eventPayload *)event->data;
 
    return (intptr_t )condition == (intptr_t)eventData->data;

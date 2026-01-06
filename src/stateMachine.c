@@ -28,7 +28,7 @@ static struct transition *getTransition( struct stateMachine *stateMachine,
       struct state *state, struct event *const event );
 
 void stateM_init( struct stateMachine *fsm,
-      struct state *initialState, struct state *errorState )
+      struct state *initialState, struct state *errorState, void *userData )
 {
    if ( !fsm )
       return;
@@ -36,6 +36,7 @@ void stateM_init( struct stateMachine *fsm,
    fsm->currentState = initialState;
    fsm->previousState = NULL;
    fsm->errorState = errorState;
+   fsm->userData = userData;
 }
 
 int stateM_handleEvent( struct stateMachine *fsm,
@@ -49,28 +50,6 @@ int stateM_handleEvent( struct stateMachine *fsm,
       goToErrorState( fsm, event );
       return stateM_errorStateReached;
    }
-
-    // 1. original code
-    // if ( !fsm->currentState->numTransitions )
-    // 2. edition 2
-    // if ( !fsm->currentState->numTransitions && 
-    //    (!fsm->currentState->parentState || !fsm->currentState->parentState->numTransitions) )
-    // 3. edition 3
-    // /* Optimization
-    //  * If no state in the entire hierarchy has any transitions,
-    //  * we can return immediately without traversing the parent chain.
-    //  *
-    //  * We need to check all ancestors because in a hierarchical state machine,
-    //  * events can be handled by any ancestor state.
-    //  */
-    // bool anyTransitions = false;
-    // struct state *checkState = fsm->currentState;
-    // while (checkState && !anyTransitions) {
-    //    anyTransitions = (checkState->numTransitions > 0);
-    //    checkState = checkState->parentState;
-    // }
-    // if (!anyTransitions)
-    //    return stateM_noStateChange;
 
    struct state *nextState = fsm->currentState;
    do {
@@ -132,18 +111,18 @@ int stateM_handleEvent( struct stateMachine *fsm,
       for (int k = 0; k <= i; k++) {
          struct state *exitState = currentPath[k];
          if (exitState->exitAction)
-            exitState->exitAction(exitState->data, event);
+            exitState->exitAction(fsm, exitState->data, event);
       }
 
       /* Run transition action (if any): */
       if ( transition->action )
-         transition->action( fsm->currentState->data, event, targetLeafState->data );
+         transition->action(fsm, fsm->currentState->data, event, targetLeafState->data);
 
       /* Call entry actions from common ancestor's child down to target leaf state */
       for (int k = j; k >= 0; k--) {
          struct state *entryState = targetPath[k];
          if (entryState->entryAction)
-            entryState->entryAction(entryState->data, event);
+            entryState->entryAction(fsm, entryState->data, event);
       }
 
       /* Update current state to target leaf state */
@@ -194,7 +173,7 @@ static void goToErrorState( struct stateMachine *fsm,
    fsm->currentState = fsm->errorState;
 
    if ( fsm->currentState && fsm->currentState->entryAction )
-      fsm->currentState->entryAction( fsm->currentState->data, event );
+      fsm->currentState->entryAction(fsm, fsm->currentState->data, event);
 }
 
 static struct transition *getTransition( struct stateMachine *fsm,
@@ -212,7 +191,7 @@ static struct transition *getTransition( struct stateMachine *fsm,
          if ( !t->guard )
             return t;
          /* If transition is guarded, ensure that the condition is held: */
-         else if ( t->guard( t->condition, event ) )
+         else if ( t->guard(fsm, t->condition, event) )
             return t;
       }
    }

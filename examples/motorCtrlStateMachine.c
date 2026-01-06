@@ -312,48 +312,48 @@ static Context_t ctx = {
 
 /* Private function prototypes -----------------------------------------------*/
 
-static bool Guard_PowerGood(void *param, struct event *e){ printf("[Guard] 电源良好检查通过。\n"); return true; }
-static bool Guard_InitSuccess(void *param, struct event *e){ printf("[Guard] 初始化成功检查通过。\n"); return true; }
-static bool Guard_AlignSuccess(void *param, struct event *e){ printf("[Guard] 对齐成功检查通过。\n"); return true; }
-static bool Guard_IsStopped(void *param, struct event *e){ printf("[Guard] 电机已停止！\n"); return true; }
-static bool Guard_CanChangeMode(void *param, struct event *e);
-static bool Guard_FaultActive(void *param, struct event *e);
-static bool Guard_FaultReseted(void *param, struct event *e);
+static bool Guard_PowerGood(struct stateMachine *fsm, void *param, struct event *e){ printf("[Guard] 电源良好检查通过。\n"); return true; }
+static bool Guard_InitSuccess(struct stateMachine *fsm, void *param, struct event *e){ printf("[Guard] 初始化成功检查通过。\n"); return true; }
+static bool Guard_AlignSuccess(struct stateMachine *fsm, void *param, struct event *e){ printf("[Guard] 对齐成功检查通过。\n"); return true; }
+static bool Guard_IsStopped(struct stateMachine *fsm, void *param, struct event *e){ printf("[Guard] 电机已停止！\n"); return true; }
+static bool Guard_CanChangeMode(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_FaultActive(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_FaultReseted(struct stateMachine *fsm, void *param, struct event *e);
 
-static void EnterAction_PowerUp(void *stateData, struct event *e){ printf(">> [State] 进入上电状态\n"); }
-static void EnterAction_Init(void *stateData, struct event *e){ printf(">> [State] 进入初始化状态\n"); }
-static void EnterAction_Align(void *stateData, struct event *e){ printf(">> [State] 进入对齐状态\n"); }
-static void Action_ProcessAlign(void *currentStateData, struct event *event, void *newStateData ){}
-static void EnterAction_Stopped(void *stateData, struct event *e){ printf(">> [State] 进入停止状态\n"); }
-static void EnterAction_Running(void *stateData, struct event *e);
-static void ExitAction_Running(void *stateData, struct event *e);
-static void Action_PrepareModeChange(void *currentStateData, struct event *event, void *newStateData );
-static void Action_UpdateParams(void *currentStateData, struct event *event, void *newStateData );
-static void EnterAction_Stopping(void *stateData, struct event *e){ printf(">> [State] 进入停止中状态\n"); }
-static void ExitAction_Stopping(void *stateData, struct event *e){ printf("<< [State] 退出停止中状态\n"); }
-static void Action_ProcessStopping(void *currentStateData, struct event *event, void *newStateData ){}
-static void EnterAction_Faulting(void *stateData, struct event *e){ printf(">> [State] 进入故障处理状态！\n"); }
-static void ExitAction_Faulting(void *stateData, struct event *e){ printf("<< [State] 退出故障处理状态！\n"); }
-static void EnterAction_Faulted(void *stateData, struct event *e){ printf(">> [State] 进入故障状态！\n"); }
-static void ExitAction_Faulted(void *stateData, struct event *e){ printf("<< [State] 退出故障状态！\n"); }
-static void EnterAction_Resetting(void *stateData, struct event *e){ printf(">> [State] 进入故障复位状态！\n"); }
-static void ExitAction_Resetting(void *stateData, struct event *e){ printf("<< [State] 退出故障复位状态！\n"); }
+static void EnterAction_PowerUp(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入上电状态\n"); }
+static void EnterAction_Init(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入初始化状态\n"); }
+static void EnterAction_Align(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入对齐状态\n"); }
+static void Action_ProcessAlign(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData){ (void)fsm; (void)currentStateData; (void)event; (void)newStateData; }
+static void EnterAction_Stopped(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入停止状态\n"); }
+static void EnterAction_Running(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_Running(struct stateMachine *fsm, void *stateData, struct event *e);
+static void Action_PrepareModeChange(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData);
+static void Action_UpdateParams(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData);
+static void EnterAction_Stopping(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入停止中状态\n"); }
+static void ExitAction_Stopping(struct stateMachine *fsm, void *stateData, struct event *e){ printf("<< [State] 退出停止中状态\n"); }
+static void Action_ProcessStopping(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData){ (void)fsm; (void)currentStateData; (void)event; (void)newStateData; }
+static void EnterAction_Faulting(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入故障处理状态！\n"); }
+static void ExitAction_Faulting(struct stateMachine *fsm, void *stateData, struct event *e){ (void)fsm; printf("<< [State] 退出故障处理状态！\n"); }
+static void EnterAction_Faulted(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入故障状态！\n"); }
+static void ExitAction_Faulted(struct stateMachine *fsm, void *stateData, struct event *e){ (void)fsm; printf("<< [State] 退出故障状态！\n"); }
+static void EnterAction_Resetting(struct stateMachine *fsm, void *stateData, struct event *e){ printf(">> [State] 进入故障复位状态！\n"); }
+static void ExitAction_Resetting(struct stateMachine *fsm, void *stateData, struct event *e){ (void)fsm; printf("<< [State] 退出故障复位状态！\n"); }
 
-static void EnterAction_CyclicTorque(void *stateData, struct event *event) { printf("[Motion] [Enter] 循环力矩模式\n"); }
-static void Action_CycleCyclicTorque(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] 循环力矩\n"); }
-static void ExitAction_CyclicTorque(void *stateData, struct event *event ){ printf("[Motion] [Exit] 循环力矩模式\n"); }
-static void EnterAction_CyclicVelocity(void *stateData, struct event *event ) { printf("[Motion] [Enter] 循环速度模式\n");}
-static void Action_CycleCyclicVelocity(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] 循环速度\n"); }
-static void ExitAction_CyclicVelocity(void *stateData, struct event *event ) { printf("[Motion] [Exit] 循环速度模式\n"); }
-static void EnterAction_CyclicPosition(void *stateData, struct event *event ) { printf("[Motion] [Enter] 循环位置模式\n"); }
-static void Action_CycleCyclicPosition(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] 循环位置\n"); }
-static void ExitAction_CyclicPosition(void *stateData, struct event *event ) { printf("[Motion] [Exit] 循环位置模式\n"); }
-static void EnterAction_ProfileVelocity(void *stateData, struct event *event ) { printf("[Motion] [Enter] 轮廓速度模式\n"); }
-static void Action_CycleProfileVelocity(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] 轮廓速度\n"); }
-static void ExitAction_ProfileVelocity(void *stateData, struct event *event ) { printf("[Motion] [Exit] 轮廓速度模式\n"); }
-static void EnterAction_ProfilePosition(void *stateData, struct event *event ) { printf("[Motion] [Enter] 轮廓位置模式\n"); }
-static void Action_CycleProfilePosition(void *currentStateData, struct event *event, void *newStateData ) { printf("[Motion] [Cycle] 轮廓位置\n"); }
-static void ExitAction_ProfilePosition(void *stateData, struct event *event ) { printf("[Motion] [Exit] 轮廓位置模式\n"); }
+static void EnterAction_CyclicTorque(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Enter] 循环力矩模式\n"); }
+static void Action_CycleCyclicTorque(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData) { (void)fsm; printf("[Motion] [Cycle] 循环力矩\n"); }
+static void ExitAction_CyclicTorque(struct stateMachine *fsm, void *stateData, struct event *event){ (void)fsm; printf("[Motion] [Exit] 循环力矩模式\n"); }
+static void EnterAction_CyclicVelocity(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Enter] 循环速度模式\n");}
+static void Action_CycleCyclicVelocity(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData) { (void)fsm; printf("[Motion] [Cycle] 循环速度\n"); }
+static void ExitAction_CyclicVelocity(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Exit] 循环速度模式\n"); }
+static void EnterAction_CyclicPosition(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Enter] 循环位置模式\n"); }
+static void Action_CycleCyclicPosition(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData) { (void)fsm; printf("[Motion] [Cycle] 循环位置\n"); }
+static void ExitAction_CyclicPosition(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Exit] 循环位置模式\n"); }
+static void EnterAction_ProfileVelocity(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Enter] 轮廓速度模式\n"); }
+static void Action_CycleProfileVelocity(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData) { (void)fsm; printf("[Motion] [Cycle] 轮廓速度\n"); }
+static void ExitAction_ProfileVelocity(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Exit] 轮廓速度模式\n"); }
+static void EnterAction_ProfilePosition(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Enter] 轮廓位置模式\n"); }
+static void Action_CycleProfilePosition(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData) { (void)fsm; printf("[Motion] [Cycle] 轮廓位置\n"); }
+static void ExitAction_ProfilePosition(struct stateMachine *fsm, void *stateData, struct event *event) { (void)fsm; printf("[Motion] [Exit] 轮廓位置模式\n"); }
 
 /* Private variables ---------------------------------------------------------*/
 
@@ -619,18 +619,22 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = \
 /* Private define 2 ----------------------------------------------------------*/
 /* Private macro 2 -----------------------------------------------------------*/
 /* Private function code -----------------------------------------------------*/
-static bool Guard_FaultActive(void *param, struct event *e)
+static bool Guard_FaultActive(struct stateMachine *fsm, void *param, struct event *e)
 {
-    if (ctx.fault_active) {
+    (void)param; (void)e;
+    Context_t *ctx = (Context_t *)fsm->userData;
+    if (ctx->fault_active) {
         printf("[Guard] 故障处于活动状态！\n");
         return true;
     }
     return false;
 }
 
-static bool Guard_FaultReseted(void *param, struct event *e)
+static bool Guard_FaultReseted(struct stateMachine *fsm, void *param, struct event *e)
 {
-    if (ctx.fault_active) {
+    (void)param; (void)e;
+    Context_t *ctx = (Context_t *)fsm->userData;
+    if (ctx->fault_active) {
         printf("[Guard] 故障检查处于活动状态！\n");
         return false;
     }
@@ -638,12 +642,15 @@ static bool Guard_FaultReseted(void *param, struct event *e)
     return true;
 }
 
-static bool Guard_CanChangeMode(void *param, struct event *e)
+static bool Guard_CanChangeMode(struct stateMachine *fsm, void *param, struct event *e)
 {
+    (void)param;
     printf("[Guard] 检查模式切换条件...");
 
+    Context_t *ctx = (Context_t *)fsm->userData;
+
     // 不允许切换：存在故障
-    if (ctx.fault_active) {
+    if (ctx->fault_active) {
         printf("不允许：存在故障\n");
         return false;
     }
@@ -652,7 +659,7 @@ static bool Guard_CanChangeMode(void *param, struct event *e)
     Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
 
     // 不允许切换：目标模式与当前模式相同
-    if (newMode == ctx.lastMotion) {
+    if (newMode == ctx->lastMotion) {
         printf("不允许：目标模式与当前模式相同\n");
         return false;
     }
@@ -660,41 +667,46 @@ static bool Guard_CanChangeMode(void *param, struct event *e)
     return true;
 }
 
-static void EnterAction_Running(void *stateData, struct event *e)
+static void EnterAction_Running(struct stateMachine *fsm, void *stateData, struct event *e)
 {
-    Context_t *ctx_ptr = (Context_t *)stateData;
+    (void)stateData; (void)e;
+    Context_t *ctx = (Context_t *)fsm->userData;
 
-    Motor_MotionMode_t targetMotion = ctx_ptr->pendingMotion;
+    Motor_MotionMode_t targetMotion = ctx->pendingMotion;
 
     printf(">> [State] 进入运行状态。目标运动模式: %s\n", _motion2str(targetMotion));
 
-    ctx_ptr->lastMotion = targetMotion;
-    ctx_ptr->lastMotionState = &motionLayer[targetMotion];
+    ctx->lastMotion = targetMotion;
+    ctx->lastMotionState = &motionLayer[targetMotion];
     stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[targetMotion];
 }
 
-static void ExitAction_Running(void *stateData, struct event *e)
+static void ExitAction_Running(struct stateMachine *fsm, void *stateData, struct event *e)
 {
-    Context_t *ctx_ptr = (Context_t *)stateData;
+    (void)e;
+    Context_t *ctx = (Context_t *)fsm->userData;
+    (void)stateData;
 
-    printf("<< [State] 退出运行状态。当前运动模式: %s\n", _motion2str(ctx_ptr->lastMotion));
-
+    printf("<< [State] 退出运行状态。当前运动模式: %s\n", _motion2str(ctx->lastMotion));
 }
 
-static void Action_PrepareModeChange(void *currentStateData, struct event *e, void *newStateData)
+static void Action_PrepareModeChange(struct stateMachine *fsm, void *currentStateData, struct event *e, void *newStateData)
 {
+    (void)currentStateData; (void)newStateData;
+    Context_t *ctx = (Context_t *)fsm->userData;
     Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
 
     printf("[Action] 准备切换到 %s 模式\n", _motion2str(newMode));
 
-    ctx.lastMotion = newMode;
-    ctx.lastMotionState = &motionLayer[newMode];
-    ctx.pendingMotion = newMode;
+    ctx->lastMotion = newMode;
+    ctx->lastMotionState = &motionLayer[newMode];
+    ctx->pendingMotion = newMode;
     stateLayer[MOTOR_STATE_RUNNING].entryState = &motionLayer[newMode];
 }
 
-static void Action_UpdateParams(void *currentStateData, struct event *e, void *newStateData)
+static void Action_UpdateParams(struct stateMachine *fsm, void *currentStateData, struct event *e, void *newStateData)
 {
+    (void)fsm; (void)currentStateData; (void)newStateData;
     Motor_Param_t *param = (Motor_Param_t *)e->data;
     if (!param) return;
 
@@ -740,9 +752,9 @@ static void Action_UpdateParams(void *currentStateData, struct event *e, void *n
 void *motor_thread(void *arg) 
 {
     struct stateMachine fsm;
-    stateM_init(&fsm, 
-                &stateLayer[MOTOR_STATE_POWER_UP], 
-                &stateLayer[MOTOR_STATE_FAULTING]);
+    stateM_init(&fsm,
+                &stateLayer[MOTOR_STATE_POWER_UP],
+                &stateLayer[MOTOR_STATE_FAULTING], &ctx);
     
     printf("电机控制线程已启动。\n");
 

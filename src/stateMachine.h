@@ -104,6 +104,7 @@ struct event
 };
 
 struct state;
+struct stateMachine;
 
 /**
  * \brief Transition between a state and another state
@@ -182,25 +183,27 @@ struct transition
     * The user may choose to use this argument or not. Only if the result is
     * true, the transition will take place.
     *
+    * \param fsm the state machine instance (provides access to userData)
     * \param condition event (data) to compare the incoming event against.
     * \param event the event passed to the state machine.
     *
     * \returns true if the event's data fulfils the condition, otherwise false.
     */
-   bool ( *guard )( void *condition, struct event *event );
-   /** 
+   bool ( *guard )( struct stateMachine *fsm, void *condition, struct event *event );
+   /**
     * \brief Function containing tasks to be performed during the transition
     *
     * The transition may optionally do some work in this function before
     * entering the next state. May be NULL.
     *
+    * \param fsm the state machine instance (provides access to userData)
     * \param currentStateData the leaving state's \ref state::data "data"
     * \param event the event passed to the state machine.
     * \param newStateData the new state's (the \ref state::entryState
     * "entryState" of any (chain of) parent states, not the parent state
     * itself) \ref state::data "data"
     */
-   void ( *action )( void *currentStateData, struct event *event,
+   void ( *action )( struct stateMachine *fsm, void *currentStateData, struct event *event,
          void *newStateData );
    /**
     * \brief The next state
@@ -317,7 +320,7 @@ struct state
     * #exitAction, and in any \ref transition::action "transition action"
     */
    void *data;
-   /** 
+   /**
     * \brief This function is called whenever the state is being entered. May
     * be NULL.
     *
@@ -327,10 +330,11 @@ struct state
     * \note A group/parent state with its #entryState defined will not have
     * its #entryAction called.
     *
+    * \param fsm the state machine instance (provides access to userData)
     * \param stateData the state's #data will be passed.
     * \param event the event that triggered the transition will be passed.
     */
-   void ( *entryAction )( void *stateData, struct event *event );
+   void ( *entryAction )( struct stateMachine *fsm, void *stateData, struct event *event );
    /**
     * \brief This function is called whenever the state is being left. May be
     * NULL.
@@ -338,10 +342,11 @@ struct state
     * \note If a state returns to itself through a transition (either directly
     * or through a parent/group sate), its #exitAction will not be called.
     *
+    * \param fsm the state machine instance (provides access to userData)
     * \param stateData the state's #data will be passed.
     * \param event the event that triggered a transition will be passed.
     */
-   void ( *exitAction )( void *stateData, struct event *event );
+   void ( *exitAction )( struct stateMachine *fsm, void *stateData, struct event *event );
 };
 
 /**
@@ -353,14 +358,14 @@ struct stateMachine
 {
    /** \brief Pointer to the current state */
    struct state *currentState;
-   /** 
+   /**
     * \brief Pointer to previous state
     *
     * The previous state is stored for convenience in case the user needs to
     * keep track of previous states.
     */
    struct state *previousState;
-   /** 
+   /**
     * \brief Pointer to a state that will be entered whenever an error occurs
     * in the state machine.
     *
@@ -368,6 +373,17 @@ struct stateMachine
     * error state.
     */
    struct state *errorState;
+   /**
+    * \brief User-defined context for this FSM instance
+    *
+    * This pointer is passed as the first parameter to all callback functions
+    * (guards, actions, entry/exit actions). It allows multiple FSM instances
+    * to share the same state definitions while maintaining separate contexts.
+    *
+    * Typical usage: Store application-specific data, configuration, or
+    * resource handles that callbacks need to access.
+    */
+   void *userData;
 };
 
 /**
@@ -381,7 +397,7 @@ struct stateMachine
  *
  * \note The \ref #state::entryAction "entry action" for \pn{initialState}
  * will not be called.
- * 
+ *
  * \note If \pn{initialState} is a parent state with its \ref
  * state::entryState "entryState" defined, it will not be entered. The user
  * must explicitly set the initial state.
@@ -390,9 +406,10 @@ struct stateMachine
  * \param initialState the initial state of the state machine.
  * \param errorState pointer to a state that acts a final state and notifies
  * the system/user that an error has occurred.
+ * \param userData the user-defined context for this FSM instance.
  */
 void stateM_init( struct stateMachine *stateMachine,
-      struct state *initialState, struct state *errorState );
+      struct state *initialState, struct state *errorState, void *userData );
 
 /**
  * \brief stateM_handleEvent() return values
@@ -495,10 +512,10 @@ bool stateM_stopped( struct stateMachine *stateMachine );
 #define EnterAction(func_name_) EnterAction_##func_name_
 #define ExitAction(func_name_)  ExitAction_##func_name_
 
-typedef bool ( *StateGuardDef )( void *condition, struct event *event );
-typedef void ( *TransActionDef )( void *currentStateData, struct event *event, void *newStateData );
-typedef void ( *EnterActionDef )( void *stateData, struct event *event );
-typedef void ( *ExitActionDef )( void *stateData, struct event *event );
+typedef bool ( *StateGuardDef )( struct stateMachine *fsm, void *condition, struct event *event );
+typedef void ( *TransActionDef )( struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData );
+typedef void ( *EnterActionDef )( struct stateMachine *fsm, void *stateData, struct event *event );
+typedef void ( *ExitActionDef )( struct stateMachine *fsm, void *stateData, struct event *event );
 
 #endif // STATEMACHINE_H
 

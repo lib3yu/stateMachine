@@ -89,34 +89,34 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 /* Private variables ---------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
 /* 故障检查函数 */
-static int CheckFaultActive(void);
+static int CheckFaultActive(struct stateMachine *fsm);
 
 /* 守卫函数声明 */
-static bool Guard_PowerGood(void *param, struct event *e);
-static bool Guard_InitSuccess(void *param, struct event *e);
-static bool Guard_AlignSuccess(void *param, struct event *e);
-static bool Guard_IsStopped(void *param, struct event *e);
+static bool Guard_PowerGood(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_InitSuccess(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_AlignSuccess(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_IsStopped(struct stateMachine *fsm, void *param, struct event *e);
 
 /* Entry动作函数声明 */
-static void EnterAction_PowerUp(void *stateData, struct event *e);
-static void EnterAction_Init(void *stateData, struct event *e);
-static void EnterAction_Alignment(void *stateData, struct event *e);
-static void EnterAction_Stopped(void *stateData, struct event *e);
-static void EnterAction_Running(void *stateData, struct event *e);
-static void EnterAction_Stopping(void *stateData, struct event *e);
-static void EnterAction_Faulted(void *stateData, struct event *e);
+static void EnterAction_PowerUp(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_Init(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_Alignment(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_Stopped(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_Running(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_Stopping(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_Faulted(struct stateMachine *fsm, void *stateData, struct event *e);
 
 /* 运动模式层Entry/Exit动作函数声明 */
-static void EnterAction_MotionPVM(void *stateData, struct event *e);
-static void EnterAction_MotionPPM(void *stateData, struct event *e);
-static void EnterAction_MotionCSV(void *stateData, struct event *e);
-static void EnterAction_MotionCSP(void *stateData, struct event *e);
-static void EnterAction_MotionCST(void *stateData, struct event *e);
-static void ExitAction_MotionPVM(void *stateData, struct event *e);
-static void ExitAction_MotionPPM(void *stateData, struct event *e);
-static void ExitAction_MotionCSV(void *stateData, struct event *e);
-static void ExitAction_MotionCSP(void *stateData, struct event *e);
-static void ExitAction_MotionCST(void *stateData, struct event *e);
+static void EnterAction_MotionPVM(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_MotionPPM(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_MotionCSV(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_MotionCSP(struct stateMachine *fsm, void *stateData, struct event *e);
+static void EnterAction_MotionCST(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionPVM(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionPPM(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionCSV(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionCSP(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionCST(struct stateMachine *fsm, void *stateData, struct event *e);
 
 /* Private define 2 ----------------------------------------------------------*/
 /* Private macro 2 -----------------------------------------------------------*/
@@ -124,8 +124,9 @@ static void ExitAction_MotionCST(void *stateData, struct event *e);
 
 /* ===== 故障检查函数实现 ===== */
 /* 返回1表示故障激活，0表示无故障 */
-static int CheckFaultActive(void) {
-    if (ctx.fault_active) {
+static int CheckFaultActive(struct stateMachine *fsm) {
+    Context_t *ctx = (Context_t *)fsm->userData;
+    if (ctx->fault_active) {
         // printf("[CheckFaultActive] 检测到故障！\n");
         return 1;
     }
@@ -133,114 +134,114 @@ static int CheckFaultActive(void) {
 }
 
 /* ===== 守卫函数实现 ===== */
-static bool Guard_PowerGood(void *param, struct event *e) {
-    (void)param; (void)e;
+static bool Guard_PowerGood(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param; (void)e;
     printf("[Guard] 电源良好检查通过\n");
     return true;
 }
 
-static bool Guard_InitSuccess(void *param, struct event *e) {
-    (void)param; (void)e;
+static bool Guard_InitSuccess(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param; (void)e;
     printf("[Guard] 初始化成功，进入对齐流程\n");
     return true;
 }
 
-static bool Guard_AlignSuccess(void *param, struct event *e) {
-    (void)param; (void)e;
+static bool Guard_AlignSuccess(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param; (void)e;
     printf("[Guard] 对齐成功\n");
     return true;
 }
 
-static bool Guard_IsStopped(void *param, struct event *e) {
-    (void)param; (void)e;
+static bool Guard_IsStopped(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param; (void)e;
     printf("[Guard] 速度归零，停止完成\n");
     return true;
 }
 
 /* ===== Entry动作函数实现 ===== */
-static void EnterAction_PowerUp(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_PowerUp(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入上电状态 (硬件自检与电源检查)\n");
 }
 
-static void EnterAction_Init(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_Init(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入初始化状态 (引导初始化:外设/参数)\n");
 }
 
-static void EnterAction_Alignment(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_Alignment(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入对齐状态 (电机相位对齐)\n");
 }
 
-static void EnterAction_Stopped(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_Stopped(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入停止状态 (伺服停止/待机)\n");
 }
 
-static void EnterAction_Running(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_Running(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入运行状态\n");
 }
 
-static void EnterAction_Stopping(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_Stopping(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入停止中状态 (减速停车中/抱闸介入)\n");
 }
 
-static void EnterAction_Faulted(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_Faulted(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入故障锁定状态 (等待外部干预)\n");
 }
 
 /* ===== 运动模式层Entry/Exit动作函数实现 ===== */
-static void EnterAction_MotionPVM(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_MotionPVM(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 进入轮廓速度模式(PVM)\n");
 }
 
-static void EnterAction_MotionPPM(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_MotionPPM(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 进入轮廓位置模式(PPM)\n");
 }
 
-static void EnterAction_MotionCSV(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_MotionCSV(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 进入循环速度模式(CSV)\n");
 }
 
-static void EnterAction_MotionCSP(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_MotionCSP(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 进入循环位置模式(CSP)\n");
 }
 
-static void EnterAction_MotionCST(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void EnterAction_MotionCST(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 进入循环力矩模式(CST)\n");
 }
 
-static void ExitAction_MotionPVM(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void ExitAction_MotionPVM(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 退出轮廓速度模式(PVM)\n");
 }
 
-static void ExitAction_MotionPPM(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void ExitAction_MotionPPM(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 退出轮廓位置模式(PPM)\n");
 }
 
-static void ExitAction_MotionCSV(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void ExitAction_MotionCSV(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 退出循环速度模式(CSV)\n");
 }
 
-static void ExitAction_MotionCSP(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void ExitAction_MotionCSP(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 退出循环位置模式(CSP)\n");
 }
 
-static void ExitAction_MotionCST(void *stateData, struct event *e) {
-    (void)stateData; (void)e;
+static void ExitAction_MotionCST(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)fsm; (void)stateData; (void)e;
     printf("  [Motion] 退出循环力矩模式(CST)\n");
 }
 
@@ -249,7 +250,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* POWER_UP：上电状态 */
     [MOTOR_STATE_POWER_UP] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_PowerUp,
         .exitAction = NULL,
@@ -263,7 +264,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* INIT：初始化状态 */
     [MOTOR_STATE_INIT] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Init,
         .exitAction = NULL,
@@ -277,7 +278,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* ALIGNMENT：对齐状态 */
     [MOTOR_STATE_ALIGNMENT] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Alignment,
         .exitAction = NULL,
@@ -291,7 +292,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* STOPPED：已停止状态 */
     [MOTOR_STATE_STOPPED] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Stopped,
         .exitAction = NULL,
@@ -305,7 +306,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* RUNNING：运行状态 */
     [MOTOR_STATE_RUNNING] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Running,
         .exitAction = NULL,
@@ -319,7 +320,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* STOPPING：停止中状态 */
     [MOTOR_STATE_STOPPING] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Stopping,
         .exitAction = NULL,
@@ -333,7 +334,7 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     /* FAULTED：故障锁定状态 */
     [MOTOR_STATE_FAULTED] = {
         .parentState = NULL,
-        .data = &ctx,
+        .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Faulted,
         .exitAction = NULL,
@@ -436,7 +437,7 @@ void *motor_thread(void *arg)
 
     /* 初始化状态机 */
     stateM_init(&fsm, &stateLayer[MOTOR_STATE_POWER_UP],
-                &stateLayer[MOTOR_STATE_FAULTED]);
+                &stateLayer[MOTOR_STATE_FAULTED], &ctx);
     printf("[Motor] State machine initialized\n");
 
     while (!ctx.exit_app) {
@@ -512,7 +513,7 @@ void *motor_thread(void *arg)
          * 2. 避免在每个状态的转换中都重复定义故障守卫
          * 3. 简化 motionLayer，故障事件自动冒泡到父状态RUNNING处理
          */
-        if (CheckFaultActive()) {
+        if (CheckFaultActive(&fsm)) {
             /* 故障激活，发送故障事件（优先级最高） */
             ev.type = MOTOR_EV_FAULT_ACTIVE;
             ev.data = NULL;

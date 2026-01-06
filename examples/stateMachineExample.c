@@ -58,20 +58,20 @@ enum eventType {
 
 /* Compare keyboard character from transition's condition variable against
  * data in event. */
-static bool compareKeyboardChar( void *ch, struct event *event );
+static bool compareKeyboardChar( struct stateMachine *fsm, void *ch, struct event *event );
 
-static void printRecognisedChar( void *stateData, struct event *event );
-static void printUnrecognisedChar( void *oldStateData, struct event *event,
+static void printRecognisedChar( struct stateMachine *fsm, void *stateData, struct event *event );
+static void printUnrecognisedChar( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData );
-static void printReset( void *oldStateData, struct event *event,
+static void printReset( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData );
-static void printHiMsg( void *oldStateData, struct event *event,
+static void printHiMsg( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData );
-static void printHaMsg( void *oldStateData, struct event *event,
+static void printHaMsg( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData );
-static void printErrMsg( void *stateData, struct event *event );
-static void printEnterMsg( void *stateData, struct event *event );
-static void printExitMsg( void *stateData, struct event *event );
+static void printErrMsg( struct stateMachine *fsm, void *stateData, struct event *event );
+static void printEnterMsg( struct stateMachine *fsm, void *stateData, struct event *event );
+static void printExitMsg( struct stateMachine *fsm, void *stateData, struct event *event );
 
 /* Forward declaration of states so that they can be defined in an logical
  * order: */
@@ -161,7 +161,7 @@ static struct state errorState = {
 int main()
 {
    struct stateMachine m;
-   stateM_init( &m, &idleState, &errorState );
+   stateM_init( &m, &idleState, &errorState, NULL );
 
    int ch;
    while ( ( ch = getc( stdin ) ) != EOF )
@@ -171,56 +171,80 @@ int main()
    return 0;
 }
 
-static bool compareKeyboardChar( void *ch, struct event *event )
+static bool compareKeyboardChar( struct stateMachine *fsm, void *ch, struct event *event )
 {
+   (void)fsm;
    if ( event->type != Event_keyboard )
       return false;
 
    return (intptr_t)ch == (intptr_t)event->data;
 }
 
-static void printRecognisedChar( void *stateData, struct event *event )
+static void printRecognisedChar( struct stateMachine *fsm, void *stateData, struct event *event )
 {
-   printEnterMsg( stateData, event );
+   (void)fsm;
+   printEnterMsg( fsm, stateData, event );
    printf( "parsed: %c\n", (char)(intptr_t)event->data );
 }
 
-static void printUnrecognisedChar( void *oldStateData, struct event *event,
+static void printUnrecognisedChar( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData )
 {
+   (void)fsm;
+   (void)oldStateData;
+   (void)newStateData;
    printf( "unrecognised character: %c\n",
          (char)(intptr_t)event->data );
 }
 
-static void printReset( void *oldStateData, struct event *event,
+static void printReset( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData )
 {
+   (void)fsm;
+   (void)oldStateData;
+   (void)event;
+   (void)newStateData;
    puts( "Resetting" );
 }
 
-static void printHiMsg( void *oldStateData, struct event *event,
+static void printHiMsg( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData )
 {
+   (void)fsm;
+   (void)oldStateData;
+   (void)event;
+   (void)newStateData;
    puts( "Hi!" );
 }
 
-static void printHaMsg( void *oldStateData, struct event *event,
+static void printHaMsg( struct stateMachine *fsm, void *oldStateData, struct event *event,
       void *newStateData )
 {
+   (void)fsm;
+   (void)oldStateData;
+   (void)event;
+   (void)newStateData;
    puts( "Ha-ha" );
 }
 
-static void printErrMsg( void *stateData, struct event *event )
+static void printErrMsg( struct stateMachine *fsm, void *stateData, struct event *event )
 {
+   (void)fsm;
+   (void)stateData;
+   (void)event;
    puts( "ENTERED ERROR STATE!" );
 }
 
-static void printEnterMsg( void *stateData, struct event *event )
+static void printEnterMsg( struct stateMachine *fsm, void *stateData, struct event *event )
 {
+   (void)fsm;
+   (void)event;
    printf( "Entering %s state\n", (char *)stateData );
 }
 
-static void printExitMsg( void *stateData, struct event *event )
+static void printExitMsg( struct stateMachine *fsm, void *stateData, struct event *event )
 {
+   (void)fsm;
+   (void)event;
    printf( "Exiting %s state\n", (char *)stateData );
 }
