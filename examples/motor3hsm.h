@@ -53,23 +53,37 @@ typedef enum {
 
 /* 命令数据负载 */
 typedef union {
-    int mode;
+    Motor_MotionMode_t motion;
     int32_t targetVelocity;
     int32_t targetPosition;
     uint32_t acceleration;
-} Motor_ParamPayload_t;
+} Motor_CmdPayload_t;
 
 /* 命令消息 */
 typedef struct {
     Motor_CmdType_t type;
-    Motor_ParamPayload_t data;
+    Motor_CmdPayload_t data;
 } Motor_Cmd_t;
+
+/* 参数类型枚举 */
+typedef enum {
+    MOTOR_PARAM_TARGET_VELOCITY,
+    MOTOR_PARAM_TARGET_POSITION,
+    MOTOR_PARAM_ACCELERATION,
+} Motor_ParamType_t;
+
+/* 参数值结构体 */
+typedef struct {
+    Motor_ParamType_t type;
+    Motor_CmdPayload_t val;
+} Motor_Param_t;
 
 /* 上下文（公共部分） */
 typedef struct {
     int exit_app;
     int fault_active;
     Motor_MotionMode_t pendingMotion;  /* 待切换的运动模式 */
+    Motor_Param_t current_param;       /* 当前参数（线程安全） */
 } Context_t;
 
 /* Public variables ----------------------------------------------------------*/

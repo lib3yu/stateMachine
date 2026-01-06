@@ -55,19 +55,6 @@ typedef enum {
     MOTOR_EV_PARAM_UPDATE_REQUESTED,
 } Motor_Event_t;
 
-/* 参数类型枚举 */
-typedef enum {
-    MOTOR_PARAM_TARGET_VELOCITY,
-    MOTOR_PARAM_TARGET_POSITION,
-    MOTOR_PARAM_ACCELERATION,
-} Motor_ParamType_t;
-
-/* 参数值结构体 */
-typedef struct {
-    Motor_ParamType_t type;
-    Motor_ParamPayload_t val;
-} Motor_Param_t;
-
 /* Private variables ---------------------------------------------------------*/
 /* 状态机实例 */
 static struct stateMachine fsm;
@@ -442,11 +429,9 @@ void *motor_thread(void *arg)
 
     while (!ctx.exit_app) {
         Motor_Cmd_t cmd;
-        Motor_Param_t param;
         struct event ev;
 
         memset(&cmd, 0, sizeof(cmd));
-        memset(&param, 0, sizeof(param));
         ev.type = MOTOR_EV_NONE;
         ev.data = NULL;
 
@@ -468,37 +453,34 @@ void *motor_thread(void *arg)
                     break;
                 case MOTOR_CMD_SET_MODE:
                     ev.type = MOTOR_EV_MODE_CHANGE_REQUESTED;
-                    ev.data = &cmd.data.mode;
-                    printf("[Motor] Received: %s, mode=%d\n", cmd_name(cmd.type), cmd.data.mode);
+                    ev.data = &cmd.data.motion;
+                    printf("[Motor] Received: %s, mode=%d\n", cmd_name(cmd.type), cmd.data.motion);
                     break;
                 case MOTOR_CMD_SET_TARGET_VELOCITY: {
-                    static Motor_Param_t param;
-                    param.type = MOTOR_PARAM_TARGET_VELOCITY;
-                    param.val = cmd.data;
+                    ctx.current_param.type = MOTOR_PARAM_TARGET_VELOCITY;
+                    ctx.current_param.val = cmd.data;
                     ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
-                    ev.data = &param;
+                    ev.data = &ctx.current_param;
                     printf("[Motor] Received: %s %s=%d\n", cmd_name(cmd.type),
-                           _param2str(param.type), cmd.data.targetVelocity);
+                           _param2str(ctx.current_param.type), cmd.data.targetVelocity);
                     break;
                 }
                 case MOTOR_CMD_SET_TARGET_POSITION: {
-                    static Motor_Param_t param;
-                    param.type = MOTOR_PARAM_TARGET_POSITION;
-                    param.val = cmd.data;
+                    ctx.current_param.type = MOTOR_PARAM_TARGET_POSITION;
+                    ctx.current_param.val = cmd.data;
                     ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
-                    ev.data = &param;
+                    ev.data = &ctx.current_param;
                     printf("[Motor] Received: %s %s=%d\n", cmd_name(cmd.type),
-                           _param2str(param.type), cmd.data.targetPosition);
+                           _param2str(ctx.current_param.type), cmd.data.targetPosition);
                     break;
                 }
                 case MOTOR_CMD_SET_ACCELERATION: {
-                    static Motor_Param_t param;
-                    param.type = MOTOR_PARAM_ACCELERATION;
-                    param.val = cmd.data;
+                    ctx.current_param.type = MOTOR_PARAM_ACCELERATION;
+                    ctx.current_param.val = cmd.data;
                     ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
-                    ev.data = &param;
+                    ev.data = &ctx.current_param;
                     printf("[Motor] Received: %s %s=%u\n", cmd_name(cmd.type),
-                           _param2str(param.type), cmd.data.acceleration);
+                           _param2str(ctx.current_param.type), cmd.data.acceleration);
                     break;
                 }
                 default:

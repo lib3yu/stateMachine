@@ -38,7 +38,7 @@ extern "C" {
 /* 自动脚本步骤结构 */
 typedef struct {
     Motor_CmdType_t cmd;
-    Motor_ParamPayload_t data;
+    Motor_CmdPayload_t data;
     uint32_t delay_ms;
     const char *label;
     int fault_flag;
@@ -52,7 +52,7 @@ Context_t ctx = {0};
 /* Private macro 1 -----------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
-static void dispatch_command(Motor_CmdType_t type, Motor_ParamPayload_t data);
+static void dispatch_command(Motor_CmdType_t type, Motor_CmdPayload_t data);
 static void *auto_flow_thread(void *arg);
 
 /* Private define 2 ----------------------------------------------------------*/
@@ -60,7 +60,7 @@ static void *auto_flow_thread(void *arg);
 /* Private function code -----------------------------------------------------*/
 
 /* 发送命令到队列 */
-static void dispatch_command(Motor_CmdType_t type, Motor_ParamPayload_t data)
+static void dispatch_command(Motor_CmdType_t type, Motor_CmdPayload_t data)
 {
     Motor_Cmd_t cmd;
     memset(&cmd, 0, sizeof(cmd));
@@ -80,13 +80,13 @@ static void *auto_flow_thread(void *arg)
 
     /* 脚本定义：演示完整的电机控制流程（12步） */
     static const MotorAutoStep_t script[] = {
-        { MOTOR_CMD_SET_MODE,             .data.mode = 0,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 1. 设置PVM模式", .fault_flag = -1 },
+        { MOTOR_CMD_SET_MODE,             .data.motion = 0,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 1. 设置PVM模式", .fault_flag = -1 },
         { MOTOR_CMD_SET_ACCELERATION,    .data.acceleration = 200, .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 2. 设置加速度200", .fault_flag = -1 },
         { MOTOR_CMD_START,               .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 3. 启动电机", .fault_flag = -1 },
         { MOTOR_CMD_SET_TARGET_VELOCITY, .data.targetVelocity = 1200, .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 4. 设置速度1200", .fault_flag = -1 },
         { MOTOR_CMD_STOP,                .data = {0},           .delay_ms = SCRIPT_DELAY_MS * 2, .label = "[Script] 5. 停止电机", .fault_flag = -1 },
         { MOTOR_CMD_START,               .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 6. 停止后重新启动", .fault_flag = -1 },
-        { MOTOR_CMD_SET_MODE,             .data.mode = 1,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 7. 切换到PPM模式", .fault_flag = -1 },
+        { MOTOR_CMD_SET_MODE,             .data.motion = 1,        .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 7. 切换到PPM模式", .fault_flag = -1 },
         { MOTOR_CMD_SET_TARGET_POSITION, .data.targetPosition = 500,  .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 8. 设置位置500", .fault_flag = -1 },
         { MOTOR_CMD_NONE,                .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 9. 注入故障", .fault_flag = 1 },
         { MOTOR_CMD_RST_FAULT,           .data = {0},           .delay_ms = SCRIPT_DELAY_MS, .label = "[Script] 10. 复位故障", .fault_flag = 0 },
