@@ -96,6 +96,18 @@ static bool Guard_InitSuccess(struct stateMachine *fsm, void *param, struct even
 static bool Guard_AlignSuccess(struct stateMachine *fsm, void *param, struct event *e);
 static bool Guard_IsStopped(struct stateMachine *fsm, void *param, struct event *e);
 static bool Guard_CanChangeMode(struct stateMachine *fsm, void *param, struct event *e);
+/* 模式切换目标检查 Guard */
+static bool Guard_TargetIsPVM(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_TargetIsPPM(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_TargetIsCSV(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_TargetIsCSP(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_TargetIsCST(struct stateMachine *fsm, void *param, struct event *e);
+/* 模式切换组合 Guard */
+static bool Guard_CanSwitchToPVM(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_CanSwitchToPPM(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_CanSwitchToCSV(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_CanSwitchToCSP(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_CanSwitchToCST(struct stateMachine *fsm, void *param, struct event *e);
 
 /* Entry动作函数声明 */
 static void EnterAction_PowerUp(struct stateMachine *fsm, void *stateData, struct event *e);
@@ -218,10 +230,66 @@ static bool Guard_CanChangeMode(struct stateMachine *fsm, void *param, struct ev
     return true;
 }
 
+/* ===== 模式切换目标检查 Guard ===== */
+/* 检查目标模式是否为 PVM */
+static bool Guard_TargetIsPVM(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param;
+    Motor_MotionMode_t targetMode = *(Motor_MotionMode_t*)e->data;
+    return targetMode == MOTOR_MOTION_PVM;
+}
+
+static bool Guard_TargetIsPPM(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param;
+    Motor_MotionMode_t targetMode = *(Motor_MotionMode_t*)e->data;
+    return targetMode == MOTOR_MOTION_PPM;
+}
+
+static bool Guard_TargetIsCSV(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param;
+    Motor_MotionMode_t targetMode = *(Motor_MotionMode_t*)e->data;
+    return targetMode == MOTOR_MOTION_CSV;
+}
+
+static bool Guard_TargetIsCSP(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param;
+    Motor_MotionMode_t targetMode = *(Motor_MotionMode_t*)e->data;
+    return targetMode == MOTOR_MOTION_CSP;
+}
+
+static bool Guard_TargetIsCST(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)fsm; (void)param;
+    Motor_MotionMode_t targetMode = *(Motor_MotionMode_t*)e->data;
+    return targetMode == MOTOR_MOTION_CST;
+}
+
+/* ===== 模式切换组合 Guard ===== */
+/* 组合 Guard：检查是否可以切换到目标模式 */
+static bool Guard_CanSwitchToPVM(struct stateMachine *fsm, void *param, struct event *e) {
+    return Guard_CanChangeMode(fsm, param, e) && Guard_TargetIsPVM(fsm, param, e);
+}
+
+static bool Guard_CanSwitchToPPM(struct stateMachine *fsm, void *param, struct event *e) {
+    return Guard_CanChangeMode(fsm, param, e) && Guard_TargetIsPPM(fsm, param, e);
+}
+
+static bool Guard_CanSwitchToCSV(struct stateMachine *fsm, void *param, struct event *e) {
+    return Guard_CanChangeMode(fsm, param, e) && Guard_TargetIsCSV(fsm, param, e);
+}
+
+static bool Guard_CanSwitchToCSP(struct stateMachine *fsm, void *param, struct event *e) {
+    return Guard_CanChangeMode(fsm, param, e) && Guard_TargetIsCSP(fsm, param, e);
+}
+
+static bool Guard_CanSwitchToCST(struct stateMachine *fsm, void *param, struct event *e) {
+    return Guard_CanChangeMode(fsm, param, e) && Guard_TargetIsCST(fsm, param, e);
+}
+
 static void ExitAction_Running(struct stateMachine *fsm, void *stateData, struct event *e) {
     (void)stateData; (void)e;
-    Context_t *ctx = (Context_t *)fsm->userData;
-    printf("<< [State] 退出运行状态。当前运动模式: %d\n", ctx->lastMotion);
+    /* 获取当前实际的运动状态（可能是 motionLayer 的某个子状态） */
+    struct state *currentMotion = stateM_currentState(fsm);
+    const char *modeName = currentMotion ? (const char*)currentMotion->data : "UNKNOWN";
+    printf("<< [State] 退出运行状态。当前运动模式: %s\n", modeName);
 }
 
 static void Action_PrepareModeChange(struct stateMachine *fsm, void *currentStateData, struct event *e, void *newStateData) {
@@ -353,17 +421,21 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
     [MOTOR_STATE_RUNNING] = {
         .parentState = NULL,
         .data = NULL,
-        .entryState = NULL,
+        .entryState = &motionLayer[MOTOR_MOTION_PVM],
         .entryAction = EnterAction_Running,
         .exitAction = ExitAction_Running,
         .transitions = (struct transition[]){
             { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
             { MOTOR_EV_STOP_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] },
-            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanChangeMode, Action_PrepareModeChange, &stateLayer[MOTOR_STATE_RUNNING] },
-            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &stateLayer[MOTOR_STATE_RUNNING] },
+            /* 模式切换：直接转换到目标运动状态 */
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanSwitchToPVM, Action_PrepareModeChange, &motionLayer[MOTOR_MOTION_PVM] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanSwitchToPPM, Action_PrepareModeChange, &motionLayer[MOTOR_MOTION_PPM] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanSwitchToCSV, Action_PrepareModeChange, &motionLayer[MOTOR_MOTION_CSV] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanSwitchToCSP, Action_PrepareModeChange, &motionLayer[MOTOR_MOTION_CSP] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanSwitchToCST, Action_PrepareModeChange, &motionLayer[MOTOR_MOTION_CST] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }
         },
-        .numTransitions = 5,
+        .numTransitions = 8,
     },
     /* STOPPING：停止中状态 */
     [MOTOR_STATE_STOPPING] = {
@@ -406,9 +478,10 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
         .entryAction = EnterAction_MotionPVM,
         .exitAction = ExitAction_MotionPVM,
         .transitions = (struct transition[]){
-            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_PVM] }  /* 自循环维持当前模式 */
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &motionLayer[MOTOR_MOTION_PVM] },
+            { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_PVM] }
         },
-        .numTransitions = 1,
+        .numTransitions = 2,
     },
     /* 轮廓位置模式 (PPM) */
     [MOTOR_MOTION_PPM] = {
@@ -418,9 +491,10 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
         .entryAction = EnterAction_MotionPPM,
         .exitAction = ExitAction_MotionPPM,
         .transitions = (struct transition[]){
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &motionLayer[MOTOR_MOTION_PPM] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_PPM] }
         },
-        .numTransitions = 1,
+        .numTransitions = 2,
     },
     /* 循环速度模式 (CSV) */
     [MOTOR_MOTION_CSV] = {
@@ -430,9 +504,10 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
         .entryAction = EnterAction_MotionCSV,
         .exitAction = ExitAction_MotionCSV,
         .transitions = (struct transition[]){
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &motionLayer[MOTOR_MOTION_CSV] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_CSV] }
         },
-        .numTransitions = 1,
+        .numTransitions = 2,
     },
     /* 循环位置模式 (CSP) */
     [MOTOR_MOTION_CSP] = {
@@ -442,9 +517,10 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
         .entryAction = EnterAction_MotionCSP,
         .exitAction = ExitAction_MotionCSP,
         .transitions = (struct transition[]){
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &motionLayer[MOTOR_MOTION_CSP] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_CSP] }
         },
-        .numTransitions = 1,
+        .numTransitions = 2,
     },
     /* 循环力矩模式 (CST) */
     [MOTOR_MOTION_CST] = {
@@ -454,9 +530,10 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
         .entryAction = EnterAction_MotionCST,
         .exitAction = ExitAction_MotionCST,
         .transitions = (struct transition[]){
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &motionLayer[MOTOR_MOTION_CST] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &motionLayer[MOTOR_MOTION_CST] }
         },
-        .numTransitions = 1,
+        .numTransitions = 2,
     },
 };
 
