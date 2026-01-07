@@ -83,6 +83,7 @@ typedef struct {
     int exit_app;
     int fault_active;
     Motor_MotionMode_t pendingMotion;  /* 待切换的运动模式 */
+    Motor_MotionMode_t lastMotion;     /* 上一次的运动模式 */
     Motor_Param_t current_param;       /* 当前参数（线程安全） */
 } Context_t;
 

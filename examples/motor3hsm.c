@@ -83,6 +83,7 @@ static bool Guard_PowerGood(struct stateMachine *fsm, void *param, struct event 
 static bool Guard_InitSuccess(struct stateMachine *fsm, void *param, struct event *e);
 static bool Guard_AlignSuccess(struct stateMachine *fsm, void *param, struct event *e);
 static bool Guard_IsStopped(struct stateMachine *fsm, void *param, struct event *e);
+static bool Guard_CanChangeMode(struct stateMachine *fsm, void *param, struct event *e);
 
 /* Entry动作函数声明 */
 static void EnterAction_PowerUp(struct stateMachine *fsm, void *stateData, struct event *e);
@@ -90,8 +91,13 @@ static void EnterAction_Init(struct stateMachine *fsm, void *stateData, struct e
 static void EnterAction_Alignment(struct stateMachine *fsm, void *stateData, struct event *e);
 static void EnterAction_Stopped(struct stateMachine *fsm, void *stateData, struct event *e);
 static void EnterAction_Running(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_Running(struct stateMachine *fsm, void *stateData, struct event *e);
 static void EnterAction_Stopping(struct stateMachine *fsm, void *stateData, struct event *e);
 static void EnterAction_Faulted(struct stateMachine *fsm, void *stateData, struct event *e);
+
+/* Transition 动作函数声明 */
+static void Action_PrepareModeChange(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData);
+static void Action_UpdateParams(struct stateMachine *fsm, void *currentStateData, struct event *event, void *newStateData);
 
 /* 运动模式层Entry/Exit动作函数声明 */
 static void EnterAction_MotionPVM(struct stateMachine *fsm, void *stateData, struct event *e);
@@ -179,6 +185,46 @@ static void EnterAction_Stopping(struct stateMachine *fsm, void *stateData, stru
 static void EnterAction_Faulted(struct stateMachine *fsm, void *stateData, struct event *e) {
     (void)fsm; (void)stateData; (void)e;
     printf(">> [State] 进入故障锁定状态 (等待外部干预)\n");
+}
+
+/* ===== Exit 和 Transition 动作函数实现 ===== */
+
+static bool Guard_CanChangeMode(struct stateMachine *fsm, void *param, struct event *e) {
+    (void)param;
+    printf("[Guard] 检查模式切换条件...");
+    Context_t *ctx = (Context_t *)fsm->userData;
+    if (ctx->fault_active) {
+        printf("不允许：存在故障\n");
+        return false;
+    }
+    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
+    if (newMode == ctx->lastMotion) {
+        printf("不允许：目标模式与当前模式相同\n");
+        return false;
+    }
+    printf("允许\n");
+    return true;
+}
+
+static void ExitAction_Running(struct stateMachine *fsm, void *stateData, struct event *e) {
+    (void)stateData; (void)e;
+    Context_t *ctx = (Context_t *)fsm->userData;
+    printf("<< [State] 退出运行状态。当前运动模式: %d\n", ctx->lastMotion);
+}
+
+static void Action_PrepareModeChange(struct stateMachine *fsm, void *currentStateData, struct event *e, void *newStateData) {
+    (void)currentStateData; (void)newStateData;
+    Context_t *ctx = (Context_t *)fsm->userData;
+    Motor_MotionMode_t newMode = *(Motor_MotionMode_t*)e->data;
+    printf("[Action] 准备切换到运动模式 %d\n", newMode);
+    ctx->pendingMotion = newMode;
+}
+
+static void Action_UpdateParams(struct stateMachine *fsm, void *currentStateData, struct event *e, void *newStateData) {
+    (void)fsm; (void)currentStateData; (void)newStateData;
+    Motor_Param_t *param = (Motor_Param_t *)e->data;
+    if (!param) return;
+    printf("[Action] 参数更新: 类型=%s\n", _param2str(param->type));
 }
 
 /* ===== 运动模式层Entry/Exit动作函数实现 ===== */
@@ -286,9 +332,10 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
         .transitions = (struct transition[]){
             { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
             { MOTOR_EV_START_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] },
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &stateLayer[MOTOR_STATE_STOPPED] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPED] }
         },
-        .numTransitions = 3,
+        .numTransitions = 4,
     },
     /* RUNNING：运行状态 */
     [MOTOR_STATE_RUNNING] = {
@@ -296,13 +343,15 @@ static struct state stateLayer[MAX_MOTOR_STATE_NUM] = {
         .data = NULL,
         .entryState = NULL,
         .entryAction = EnterAction_Running,
-        .exitAction = NULL,
+        .exitAction = ExitAction_Running,
         .transitions = (struct transition[]){
             { MOTOR_EV_FAULT_ACTIVE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_FAULTED] },
             { MOTOR_EV_STOP_REQUESTED, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_STOPPING] },
+            { MOTOR_EV_MODE_CHANGE_REQUESTED, NULL, Guard_CanChangeMode, Action_PrepareModeChange, &stateLayer[MOTOR_STATE_RUNNING] },
+            { MOTOR_EV_PARAM_UPDATE_REQUESTED, NULL, NULL, Action_UpdateParams, &stateLayer[MOTOR_STATE_RUNNING] },
             { MOTOR_EV_CYCLE, NULL, NULL, NULL, &stateLayer[MOTOR_STATE_RUNNING] }
         },
-        .numTransitions = 3,
+        .numTransitions = 5,
     },
     /* STOPPING：停止中状态 */
     [MOTOR_STATE_STOPPING] = {
@@ -495,16 +544,16 @@ void *motor_thread(void *arg)
          * 2. 避免在每个状态的转换中都重复定义故障守卫
          * 3. 简化 motionLayer，故障事件自动冒泡到父状态RUNNING处理
          */
+        /* 故障检查优先处理 */
         if (CheckFaultActive(&fsm)) {
-            /* 故障激活，发送故障事件（优先级最高） */
             ev.type = MOTOR_EV_FAULT_ACTIVE;
             ev.data = NULL;
             stateM_handleEvent(&fsm, &ev);
         } else if (ev.type != MOTOR_EV_NONE) {
-            /* 有命令事件，处理命令 */
+            /* 有命令事件 */
             stateM_handleEvent(&fsm, &ev);
         } else {
-            /* 无命令且无故障，发送CYCLE事件维持状态机运行 */
+            /* 无命令：发送CYCLE事件维持状态机运行 */
             ev.type = MOTOR_EV_CYCLE;
             ev.data = NULL;
             stateM_handleEvent(&fsm, &ev);
