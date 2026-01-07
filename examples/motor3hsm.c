@@ -58,7 +58,6 @@ typedef enum {
 /* Private variables ---------------------------------------------------------*/
 /* 状态机实例 */
 static struct stateMachine fsm;
-
 /* 状态数组声明 */
 static struct state stateLayer[MAX_MOTOR_STATE_NUM];
 /* 运动模式层状态数组（RUNNING的子状态） */
@@ -75,7 +74,20 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM];
 
 /* Private variables ---------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
-/* 故障检查函数 */
+
+/* ============================================================================
+ * 业务逻辑函数（非状态机回调）
+ * ===========================================================================*/
+
+/* 辅助函数 */
+static const char *cmd_name(Motor_CmdType_t type);
+static int ProcessCommand(Motor_Cmd_t *cmd, struct event *ev);
+
+/* ============================================================================
+ * 状态机回调函数
+ * ===========================================================================*/
+
+/* 故障检查函数（被状态机使用） */
 static int CheckFaultActive(struct stateMachine *fsm);
 
 /* 守卫函数声明 */
@@ -105,15 +117,15 @@ static void EnterAction_MotionPPM(struct stateMachine *fsm, void *stateData, str
 static void EnterAction_MotionCSV(struct stateMachine *fsm, void *stateData, struct event *e);
 static void EnterAction_MotionCSP(struct stateMachine *fsm, void *stateData, struct event *e);
 static void EnterAction_MotionCST(struct stateMachine *fsm, void *stateData, struct event *e);
-static void ExitAction_MotionPVM(struct stateMachine *fsm, void *stateData, struct event *e);
-static void ExitAction_MotionPPM(struct stateMachine *fsm, void *stateData, struct event *e);
-static void ExitAction_MotionCSV(struct stateMachine *fsm, void *stateData, struct event *e);
-static void ExitAction_MotionCSP(struct stateMachine *fsm, void *stateData, struct event *e);
-static void ExitAction_MotionCST(struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionPVM (struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionPPM (struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionCSV (struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionCSP (struct stateMachine *fsm, void *stateData, struct event *e);
+static void ExitAction_MotionCST (struct stateMachine *fsm, void *stateData, struct event *e);
 
-/* Private define 2 ----------------------------------------------------------*/
-/* Private macro 2 -----------------------------------------------------------*/
-/* Private function code -----------------------------------------------------*/
+/* ============================================================================
+ * 状态机回调函数实现
+ * ===========================================================================*/
 
 /* ===== 故障检查函数实现 ===== */
 /* 返回1表示故障激活，0表示无故障 */
@@ -448,6 +460,10 @@ static struct state motionLayer[MAX_MOTOR_MOTION_NUM] = {
     },
 };
 
+/* ============================================================================
+ * 业务逻辑函数实现（非状态机回调）
+ * ===========================================================================*/
+
 /* 命令转名称（用于调试打印）*/
 static const char *cmd_name(Motor_CmdType_t type)
 {
@@ -463,7 +479,63 @@ static const char *cmd_name(Motor_CmdType_t type)
     }
 }
 
-/* Public application code ---------------------------------------------------*/
+/* 处理命令：转换为事件、更新全局状态、打印调试信息
+ * 副作用：修改 ctx.current_param，打印日志
+ * 返回：1=有效事件，0=未知命令(MOTOR_EV_NONE)
+ */
+static int ProcessCommand(Motor_Cmd_t *cmd, struct event *ev)
+{
+    switch (cmd->type) {
+        case MOTOR_CMD_START:
+            ev->type = MOTOR_EV_START_REQUESTED;
+            printf("[Motor] Received: %s\n", cmd_name(cmd->type));
+            return 1;
+        case MOTOR_CMD_STOP:
+            ev->type = MOTOR_EV_STOP_REQUESTED;
+            printf("[Motor] Received: %s\n", cmd_name(cmd->type));
+            return 1;
+        case MOTOR_CMD_RST_FAULT:
+            ev->type = MOTOR_EV_FAULT_RESET_REQUESTED;
+            printf("[Motor] Received: %s\n", cmd_name(cmd->type));
+            return 1;
+        case MOTOR_CMD_SET_MODE:
+            ev->type = MOTOR_EV_MODE_CHANGE_REQUESTED;
+            ev->data = &cmd->data.motion;
+            printf("[Motor] Received: %s, mode=%d\n", cmd_name(cmd->type), cmd->data.motion);
+            return 1;
+        case MOTOR_CMD_SET_TARGET_VELOCITY:
+            ctx.current_param.type = MOTOR_PARAM_TARGET_VELOCITY;
+            ctx.current_param.val = cmd->data;
+            ev->type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
+            ev->data = &ctx.current_param;
+            printf("[Motor] Received: %s %s=%d\n", cmd_name(cmd->type),
+                   _param2str(ctx.current_param.type), cmd->data.targetVelocity);
+            return 1;
+        case MOTOR_CMD_SET_TARGET_POSITION:
+            ctx.current_param.type = MOTOR_PARAM_TARGET_POSITION;
+            ctx.current_param.val = cmd->data;
+            ev->type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
+            ev->data = &ctx.current_param;
+            printf("[Motor] Received: %s %s=%d\n", cmd_name(cmd->type),
+                   _param2str(ctx.current_param.type), cmd->data.targetPosition);
+            return 1;
+        case MOTOR_CMD_SET_ACCELERATION:
+            ctx.current_param.type = MOTOR_PARAM_ACCELERATION;
+            ctx.current_param.val = cmd->data;
+            ev->type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
+            ev->data = &ctx.current_param;
+            printf("[Motor] Received: %s %s=%u\n", cmd_name(cmd->type),
+                   _param2str(ctx.current_param.type), cmd->data.acceleration);
+            return 1;
+        default:
+            ev->type = MOTOR_EV_NONE;
+            return 0;
+    }
+}
+
+/* ============================================================================
+ * 公共应用代码
+ * ===========================================================================*/
 
 void *motor_thread(void *arg)
 {
@@ -486,56 +558,7 @@ void *motor_thread(void *arg)
 
         /* 从队列接收命令，10ms超时 */
         if (dequeue(&cmdQueue, &cmd, 10) == 0) {
-            /* 命令到事件的转换 */
-            switch (cmd.type) {
-                case MOTOR_CMD_START:
-                    ev.type = MOTOR_EV_START_REQUESTED;
-                    printf("[Motor] Received: %s\n", cmd_name(cmd.type));
-                    break;
-                case MOTOR_CMD_STOP:
-                    ev.type = MOTOR_EV_STOP_REQUESTED;
-                    printf("[Motor] Received: %s\n", cmd_name(cmd.type));
-                    break;
-                case MOTOR_CMD_RST_FAULT:
-                    ev.type = MOTOR_EV_FAULT_RESET_REQUESTED;
-                    printf("[Motor] Received: %s\n", cmd_name(cmd.type));
-                    break;
-                case MOTOR_CMD_SET_MODE:
-                    ev.type = MOTOR_EV_MODE_CHANGE_REQUESTED;
-                    ev.data = &cmd.data.motion;
-                    printf("[Motor] Received: %s, mode=%d\n", cmd_name(cmd.type), cmd.data.motion);
-                    break;
-                case MOTOR_CMD_SET_TARGET_VELOCITY: {
-                    ctx.current_param.type = MOTOR_PARAM_TARGET_VELOCITY;
-                    ctx.current_param.val = cmd.data;
-                    ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
-                    ev.data = &ctx.current_param;
-                    printf("[Motor] Received: %s %s=%d\n", cmd_name(cmd.type),
-                           _param2str(ctx.current_param.type), cmd.data.targetVelocity);
-                    break;
-                }
-                case MOTOR_CMD_SET_TARGET_POSITION: {
-                    ctx.current_param.type = MOTOR_PARAM_TARGET_POSITION;
-                    ctx.current_param.val = cmd.data;
-                    ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
-                    ev.data = &ctx.current_param;
-                    printf("[Motor] Received: %s %s=%d\n", cmd_name(cmd.type),
-                           _param2str(ctx.current_param.type), cmd.data.targetPosition);
-                    break;
-                }
-                case MOTOR_CMD_SET_ACCELERATION: {
-                    ctx.current_param.type = MOTOR_PARAM_ACCELERATION;
-                    ctx.current_param.val = cmd.data;
-                    ev.type = MOTOR_EV_PARAM_UPDATE_REQUESTED;
-                    ev.data = &ctx.current_param;
-                    printf("[Motor] Received: %s %s=%u\n", cmd_name(cmd.type),
-                           _param2str(ctx.current_param.type), cmd.data.acceleration);
-                    break;
-                }
-                default:
-                    ev.type = MOTOR_EV_NONE;
-                    break;
-            }
+            ProcessCommand(&cmd, &ev);
         }
 
         /* 故障检查优先
